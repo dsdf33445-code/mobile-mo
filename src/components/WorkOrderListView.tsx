@@ -1,6 +1,17 @@
 import { Plus, Edit2, Trash2, FileText, ArrowRight, ClipboardList } from 'lucide-react';
 
 export default function WorkOrderListView({ workOrders, onSelect, onEdit, onDelete, onAdd, onCheckAgreement }: any) {
+  
+  // 4. 狀態顏色區分
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'MO': return 'bg-purple-100 text-purple-600 border-purple-200';
+      case '已完工': return 'bg-green-100 text-green-600 border-green-200';
+      case '已結案': return 'bg-gray-100 text-gray-500 border-gray-200';
+      default: return 'bg-blue-100 text-blue-600 border-blue-200';
+    }
+  };
+
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500">
       <div className="flex justify-between items-center">
@@ -14,7 +25,7 @@ export default function WorkOrderListView({ workOrders, onSelect, onEdit, onDele
           {workOrders.map((wo: any) => (
             <div key={wo.id} onClick={() => onSelect(wo)} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all active:scale-[0.98] cursor-pointer relative overflow-hidden">
               <div className="flex justify-between items-start mb-2">
-                <span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${wo.status === 'MO' ? 'bg-purple-100 text-purple-600' : wo.status === '已結案' ? 'bg-slate-100 text-slate-500' : 'bg-blue-100 text-blue-600'}`}>{wo.status}</span>
+                <span className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${getStatusColor(wo.status)}`}>{wo.status}</span>
                 <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                   <button onClick={() => onCheckAgreement(wo.id)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full" title="查案"><FileText size={16}/></button>
                   <button onClick={() => onEdit(wo)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-full"><Edit2 size={16}/></button>

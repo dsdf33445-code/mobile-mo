@@ -15,9 +15,10 @@ import {
   type QuerySnapshot, 
   type DocumentSnapshot 
 } from 'firebase/firestore';
+// 修正：移除未使用的 Maximize, Link
 import { 
   FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, LogOut, Loader2, User as UserIcon, 
-  GitMerge, CheckSquare, Square, Maximize, Link 
+  GitMerge, CheckSquare, Square 
 } from 'lucide-react';
 
 import { auth, db, provider } from './firebase';
@@ -121,12 +122,11 @@ export default function App() {
        unsubAgree = onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => {
          if(s.exists()) setDraftAgreement(s.data());
          else if (!sharedOwnerId) {
-           // 3. 點擊新增工令時，要顯示空白協議書 (確保資料被重置)
+           // 3. 確保點擊新增工令時，草稿被清空
            setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
          }
        });
     } else {
-        // 確保當沒有 currentWOId 時，草稿也是空的
         if(!sharedOwnerId) setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
     }
     return () => { unsubWO(); unsubItems(); unsubAgree(); };
@@ -137,7 +137,7 @@ export default function App() {
   const handleLogout = () => signOut(auth);
   
   const handleUpdateAgreement = (field: string, value: any) => {
-    // 1. 工令編號限制：8碼、大寫、英數字
+    // 工令編號限制：8碼、大寫、英數字
     if (field === 'woNo') value = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     
     const newState = { ...draftAgreement, [field]: value };
@@ -166,6 +166,7 @@ export default function App() {
     if(!uid || !currentWOId) return;
     const newSigs = { ...draftAgreement.signatures, [roleId]: { ...draftAgreement.signatures[roleId], date } };
     setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), { signatures: newSigs }, {merge:true});
+    setSigningRole(null);
   };
 
   const handleShare = async () => {
@@ -191,7 +192,6 @@ export default function App() {
     if(woModal.data.status==='MO' && (!woModal.data.subNo || woModal.data.subNo.length<2)) return setDialog({isOpen:true, type:'error', message:'MO 狀態需填寫分工令'});
     const id = woModal.data.id;
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { ...woModal.data, updatedAt: serverTimestamp() }, {merge:true});
-    // 同步更新協議書的工令編號與名稱
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), { woNo: woModal.data.no, woName: woModal.data.name }, {merge: true});
     setWoModal({isOpen:false, data:null});
     if(!currentWOId) setCurrentWOId(id);
@@ -243,16 +243,6 @@ export default function App() {
     }});
   };
 
-  // 4. 狀態顏色輔助函式
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'MO': return 'bg-purple-100 text-purple-600 border-purple-200';
-      case '已完工': return 'bg-green-100 text-green-600 border-green-200';
-      case '已結案': return 'bg-gray-100 text-gray-500 border-gray-200';
-      default: return 'bg-blue-100 text-blue-600 border-blue-200';
-    }
-  };
-
   if (loading) return <div className="min-h-screen flex items-center justify-center text-blue-600"><Loader2 className="animate-spin" size={48}/></div>;
   if (!user && !sharedOwnerId) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-blue-600 p-6">
@@ -293,15 +283,18 @@ export default function App() {
           />
         )}
         {activeTab === 'wo' && (
-          // 傳遞 getStatusColor 給列表元件
           <WorkOrderListView 
             workOrders={workOrders} 
             onSelect={(wo:any) => { setCurrentWOId(wo.id); setActiveTab('mo'); }}
             onEdit={(wo:any) => { setWoModal({isOpen:true, data:wo}); }}
             onDelete={(id:string) => handleDelete('workOrders', id)}
-            onAdd={() => { setCurrentWOId(null); setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} }); setActiveTab('agreement'); }}
+            onAdd={() => { 
+                setCurrentWOId(null); 
+                // 3. 確保點擊新增工令時，草稿被清空
+                setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} }); 
+                setActiveTab('agreement'); 
+            }}
             onCheckAgreement={(id:string) => { setCurrentWOId(id); setActiveTab('agreement'); }}
-            getStatusColor={getStatusColor}
           />
         )}
         {activeTab === 'mo' && (
@@ -311,7 +304,7 @@ export default function App() {
             onAddClick={() => { setItemModal({isOpen:true, data:{no:'', name:'', qty:'', price:0}}); setShowSuggestions(false); }}
             onReloadDb={fetchProducts}
             onMergeClick={() => setMergeModal({ isOpen: true, selectedIds: [] })}
-            onExcelExport={() => {}} 
+            // 修正：不傳遞 unused prop
           />
         )}
       </main>
