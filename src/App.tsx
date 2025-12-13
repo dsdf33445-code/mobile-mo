@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore';
 import { 
   FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, LogOut, Loader2, User as UserIcon, 
-  GitMerge, CheckSquare, Square, Maximize, Link 
+  GitMerge, CheckSquare, Square 
 } from 'lucide-react';
 
 // 確保路徑與檔案結構一致
