@@ -1,6 +1,7 @@
 import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2, GitMerge } from 'lucide-react';
 
-export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, onAddClick, onExcelExport, onReloadDb, onMergeClick, dbLoading, productCount }: any) {
+// 修正：移除未使用的 onExcelExport
+export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount }: any) {
   
   // 實作簡易 Excel (CSV) 匯出功能
   const handleExport = () => {

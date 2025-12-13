@@ -15,9 +15,10 @@ import {
   type QuerySnapshot, 
   type DocumentSnapshot 
 } from 'firebase/firestore';
+// 修正：移除未使用的 Maximize, Link
 import { 
   FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, LogOut, Loader2, User as UserIcon, 
-  GitMerge, CheckSquare, Square, Maximize, Link 
+  GitMerge, CheckSquare, Square 
 } from 'lucide-react';
 
 import { auth, db, provider } from './firebase';
@@ -113,6 +114,7 @@ export default function App() {
        return onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => s.exists() && setDraftAgreement(s.data()));
     }
 
+    // 修正：為 onSnapshot 的 callback 加上型別註解
     const unsubWO = onSnapshot(query(collection(db, 'artifacts', 'mobile-mo', 'users', uid, 'workOrders'), orderBy('createdAt', 'desc')), (s: QuerySnapshot) => setWorkOrders(s.docs.map(d => ({id:d.id, ...d.data()}))));
     const unsubItems = onSnapshot(query(collection(db, 'artifacts', 'mobile-mo', 'users', uid, 'items')), (s: QuerySnapshot) => setItems(s.docs.map(d => ({id:d.id, ...d.data()}))));
     
@@ -158,6 +160,7 @@ export default function App() {
     if(!uid || !currentWOId) return;
     const newSigs = { ...draftAgreement.signatures, [roleId]: { ...draftAgreement.signatures[roleId], date } };
     setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), { signatures: newSigs }, {merge:true});
+    setSigningRole(null);
   };
 
   const handleShare = async () => {
@@ -183,6 +186,7 @@ export default function App() {
     if(woModal.data.status==='MO' && (!woModal.data.subNo || woModal.data.subNo.length<2)) return setDialog({isOpen:true, type:'error', message:'MO 狀態需填寫分工令'});
     const id = woModal.data.id;
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { ...woModal.data, updatedAt: serverTimestamp() }, {merge:true});
+    // 同步更新協議書的工令編號與名稱
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), { woNo: woModal.data.no, woName: woModal.data.name }, {merge: true});
     setWoModal({isOpen:false, data:null});
     if(!currentWOId) setCurrentWOId(id);
@@ -290,7 +294,7 @@ export default function App() {
             onAddClick={() => { setItemModal({isOpen:true, data:{no:'', name:'', qty:'', price:0}}); setShowSuggestions(false); }}
             onReloadDb={fetchProducts}
             onMergeClick={() => setMergeModal({ isOpen: true, selectedIds: [] })}
-            onExcelExport={() => {}} // 實際的匯出邏輯在 MoDetailView 內部實作
+            // 修正：不傳遞 unused prop
           />
         )}
       </main>
