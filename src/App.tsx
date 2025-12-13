@@ -16,7 +16,7 @@ import {
   type DocumentSnapshot 
 } from 'firebase/firestore';
 import { 
-  FileSpreadsheet, X, AlertTriangle, CheckCircle2, LogOut, Loader2, User as UserIcon, 
+  FileSpreadsheet, AlertTriangle, CheckCircle2, LogOut, Loader2, User as UserIcon, 
   GitMerge, CheckSquare, Square, Send 
 } from 'lucide-react';
 
@@ -30,7 +30,6 @@ import BottomNavigation from './components/BottomNavigation';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  // 1. 修改：預設進入工令管理 ('wo')
   const [activeTab, setActiveTab] = useState<'agreement' | 'wo' | 'mo'>('wo');
   
   // Data
@@ -64,7 +63,6 @@ export default function App() {
     const unsub = onAuthStateChanged(auth, u => { 
         setUser(u); 
         setLoading(false); 
-        // 登入後若無分享ID，預設停留在工令管理
         if(u && !new URLSearchParams(window.location.search).get('shareId')) {
             setActiveTab('wo');
         }
@@ -130,7 +128,6 @@ export default function App() {
        unsubAgree = onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => {
          if(s.exists()) setDraftAgreement(s.data());
          else if (!sharedOwnerId) {
-            // 2. 修正：查案時若無協議書，使用工令資料預填，並允許編輯
            const wo = workOrders.find(w => w.id === currentWOId);
            setDraftAgreement({ 
                woNo: wo?.no || '', 
@@ -158,7 +155,6 @@ export default function App() {
     setDraftAgreement(newState);
     if(user && currentWOId && !sharedOwnerId) setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid, 'agreements', currentWOId), newState, {merge:true});
     
-    // 如果修改了協議書上的工令編號/名稱，同步回工令列表
     if ((field === 'woNo' || field === 'woName') && currentWOId && user) {
         const updateData = field === 'woNo' ? { no: value } : { name: value };
         setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid, 'workOrders', currentWOId), updateData, {merge: true});
@@ -166,7 +162,6 @@ export default function App() {
   };
 
   const handleToggleSafety = (idx: number) => {
-    // 2. 修正：只要有 currentWOId (無論是否為簽署模式) 都可以勾選
     if(!currentWOId && !sharedOwnerId) return; 
     const checks = draftAgreement.safetyChecks || [];
     const newChecks = checks.includes(idx) ? checks.filter((i:number)=>i!==idx) : [...checks, idx];
@@ -214,7 +209,6 @@ export default function App() {
       createdAt: woModal.data.createdAt || serverTimestamp()
     }, {merge:true});
 
-    // 若是新增工令，建立基本協議書但不跳轉
     if (isNew) {
         await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), {
             woNo: woModal.data.no,
@@ -224,7 +218,6 @@ export default function App() {
             safetyChecks: [],
             signatures: {}
         });
-        // 1. 修正：新增後保留在工令頁面，不跳轉
         setDialog({isOpen:true, type:'success', message: '工令建立成功！'});
     } else {
         await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), {
@@ -307,8 +300,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-[Microsoft JhengHei] pb-24 safe-area-bottom">
-      {/* 3. 移除：isSigningMode 的判斷與切換按鈕，直接顯示 Header */}
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b p-4 flex justify-between safe-area-top">
+      
+      {/* Header: 列印時隱藏 */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b p-4 flex justify-between safe-area-top no-print">
         <div className="flex items-center gap-2 font-bold text-lg text-slate-800"><FileSpreadsheet size={18}/> 行動版 MO</div>
         <div className="flex items-center gap-2">
           {sharedOwnerId && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">訪客</span>}
@@ -322,7 +316,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="p-4 max-w-2xl mx-auto mb-20">
+      <main className="p-4 max-w-2xl mx-auto mb-20 print:p-0 print:m-0 print:max-w-none print:mb-0">
         {activeTab === 'agreement' && (
           <AgreementView 
             data={draftAgreement} currentWOId={currentWOId} isShared={!!sharedOwnerId}
@@ -354,7 +348,10 @@ export default function App() {
         )}
       </main>
 
-      <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} onMoClick={() => { if(!currentWOId) return setDialog({isOpen:true, type:'alert', message:'請先選擇工令'}); setActiveTab('mo'); }} />
+      {/* 導航列: 列印時隱藏 */}
+      <div className="no-print">
+         <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} onMoClick={() => { if(!currentWOId) return setDialog({isOpen:true, type:'alert', message:'請先選擇工令'}); setActiveTab('mo'); }} />
+      </div>
 
       {signingRole && <SignaturePad title={signingRole.label} onSave={handleSignatureSave} onClose={() => setSigningRole(null)} />}
       
@@ -464,10 +461,17 @@ export default function App() {
         input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         .no-arrow { -moz-appearance: textfield; }
         @media print {
-            .no-print { display: none !important; }
+            @page { size: A4; margin: 10mm; }
+            body { background: white; -webkit-print-color-adjust: exact; }
+            .no-print, header, nav, .fixed { display: none !important; }
             .print-only { display: block !important; }
-            body { background: white; }
-            .shadow-xl, .shadow-lg { box-shadow: none !important; }
+            .print:hidden { display: none !important; }
+            .shadow-xl, .shadow-lg, .shadow-sm { box-shadow: none !important; }
+            .rounded-2xl, .rounded-3xl, .rounded-xl { border-radius: 0 !important; }
+            .border { border-color: #000 !important; }
+            input, select { border: none !important; background: transparent !important; padding: 0 !important; }
+            .bg-slate-50 { background: transparent !important; }
+            main { margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: none !important; }
         }
         @supports (padding-bottom: env(safe-area-inset-bottom)) { .safe-area-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + 1rem); } }
         @supports (padding-top: env(safe-area-inset-top)) { .safe-area-top { padding-top: calc(env(safe-area-inset-top) + 0.5rem); } }
