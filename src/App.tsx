@@ -1,9 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { signInWithPopup, signOut, onAuthStateChanged, type User } from 'firebase/auth';
-// 修正：移除未使用的 collection, orderBy，保留 query, where (如果未來擴充需要)
 import { collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, serverTimestamp, orderBy } from 'firebase/firestore';
-// 修正：移除未使用的圖標 (X, PenTool, FileSpreadsheet 等已移至子元件)
-import { LogOut, Loader2, User as UserIcon } from 'lucide-react';
+// 修正：補回 App.tsx 實際使用到的圖示 (FileSpreadsheet, PenTool, X 等)
+import { FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, Maximize, LogOut, Loader2, User as UserIcon } from 'lucide-react';
 
 // 引入拆分後的檔案
 import { auth, db, provider } from './firebase';
@@ -45,7 +44,6 @@ export default function App() {
   useEffect(() => {
     const initAuth = async () => {
         setLoading(true);
-        // ...Auth logic is handled by onAuthStateChanged
     };
     initAuth();
     
@@ -92,7 +90,7 @@ export default function App() {
   };
   useEffect(() => { fetchProducts(); }, []);
 
-  // Firestore
+  // Firestore Sync
   useEffect(() => {
     if (!user && !sharedOwnerId) return;
     const uid = sharedOwnerId || user?.uid;
@@ -243,7 +241,7 @@ export default function App() {
         )}
         {activeTab === 'mo' && (
           <MoDetailView 
-            currentWorkOrder={currentWorkOrder} items={items} dbLoading={dbLoading} productCount={products.length}
+            currentWorkOrder={currentWorkOrder} items={currentItems} dbLoading={dbLoading} productCount={products.length}
             onDeleteItem={(id:string) => handleDelete('items', id)}
             onAddClick={() => { setItemModal({isOpen:true, data:{no:'', name:'', qty:'', price:0}}); setShowSuggestions(false); }}
             onReloadDb={fetchProducts}
