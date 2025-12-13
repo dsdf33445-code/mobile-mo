@@ -332,7 +332,7 @@ export default function App() {
            <FileSpreadsheet size={40}/>
         </div>
         <h1 className="text-3xl font-extrabold mb-2 text-slate-800 tracking-tight">行動版 MO</h1>
-        <p className="text-slate-500 mb-8 font-medium">中鋼風格 • 雲端同步 • 專業工令</p>
+        <p className="text-slate-500 mb-8 font-medium">開工協議書 • 工令管理 • MO明細</p>
         <button onClick={handleLogin} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg flex justify-center items-center gap-3 hover:bg-black active:scale-95 transition-all shadow-xl shadow-slate-900/30">
            <UserIcon size={20}/> 使用 Google 登入
         </button>
