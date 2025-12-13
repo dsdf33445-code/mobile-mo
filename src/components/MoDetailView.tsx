@@ -30,7 +30,8 @@ export default function MoDetailView({
       ''     
     ]);
 
-    constPv = [
+    // 修正此處變數名稱
+    const csvContent = [
       headers.join(','), 
       ...rows.map((r) => r.join(','))
     ].join('\n');
