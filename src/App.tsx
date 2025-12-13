@@ -27,7 +27,7 @@ import {
   PenTool, ChevronDown, ChevronUp, Eraser, 
   Maximize, LogOut, Loader2,
   FileText, ClipboardList, User as UserIcon, 
-  RefreshCw, LayoutList, Share2, FileSignature // 修正：補上 Share2, FileSignature
+  RefreshCw, LayoutList, Share2, FileSignature // 修正：補上 Share2, FileSignature, RefreshCw
 } from 'lucide-react';
 
 // ------------------------------------------------------------------
