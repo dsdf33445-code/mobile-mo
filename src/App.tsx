@@ -7,7 +7,7 @@ import {
   GoogleAuthProvider, 
   signOut, 
   onAuthStateChanged,
-  type User // 修正 1: 加上 type 關鍵字
+  type User 
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -17,18 +17,16 @@ import {
   deleteDoc, 
   onSnapshot, 
   query, 
-  // where, // 修正 2: 移除未使用的 where
   serverTimestamp,
   orderBy
 } from 'firebase/firestore';
 import { 
   Plus, Edit2, Trash2, X, FileSpreadsheet, 
   ArrowRight, AlertTriangle, CheckCircle2, Search, 
-  // GitMerge, CheckSquare, Square, // 修正 2: 移除未使用的圖標
   Database, Upload, 
   PenTool, ChevronDown, ChevronUp, Eraser, FileSignature, 
   Share2, Maximize, Minimize, LogOut, Loader2,
-  FileText, ClipboardList, User as UserIcon
+  FileText, ClipboardList, User as UserIcon, RefreshCw
 } from 'lucide-react';
 
 // ------------------------------------------------------------------
@@ -216,6 +214,7 @@ export default function App() {
   const [products, setProducts] = useState<any[]>([]);
   const [currentWOId, setCurrentWOId] = useState<string | null>(null);
   const [draftAgreement, setDraftAgreement] = useState<any>({});
+  const [dbLoading, setDbLoading] = useState(false);
 
   // UI States
   const [dialog, setDialog] = useState<any>({ isOpen: false });
@@ -286,6 +285,51 @@ export default function App() {
     }
     return () => { unsubWO(); unsubItems(); };
   }, [user, currentWOId, currentWorkOrder]);
+
+  // 自動載入產品資料庫 (CSV)
+  const fetchProducts = async () => {
+    setDbLoading(true);
+    try {
+      const response = await fetch('/products.csv');
+      if (!response.ok) throw new Error("找不到資料庫檔案");
+      const text = await response.text();
+      const lines = text.split('\n');
+      const newProducts: any[] = [];
+      
+      // 跳過標題列，假設第一列是標題
+      // 如果 CSV 沒有標題，將 startIndex 改為 0
+      const startIndex = lines[0]?.includes('編號') ? 1 : 0;
+
+      for (let i = startIndex; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        // 簡單的 CSV 解析 (假設沒有引號包覆的逗號)
+        const parts = line.split(',');
+        if (parts.length >= 3) {
+          // 移除 BOM 與空白
+          const no = parts[0].trim().replace(/^\uFEFF/, '');
+          const name = parts[1].trim();
+          const price = parseFloat(parts[2].trim()) || 0;
+          
+          if(no && name) {
+             newProducts.push({ no, name, price });
+          }
+        }
+      }
+      setProducts(newProducts);
+      console.log(`已載入 ${newProducts.length} 筆產品資料`);
+    } catch (e) {
+      console.error("載入產品資料庫失敗:", e);
+      // 靜默失敗，使用者可以手動匯入
+    } finally {
+      setDbLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchProducts();
+  }, []);
 
   // --- Actions ---
 
@@ -391,17 +435,38 @@ export default function App() {
     });
   };
 
-  // 修正 3: 移除未使用的參數 'e'
-  const handleExcelImport = () => {
-    const mockProducts = [
-      { no: 'E001', name: '控制電纜 CVV 3.5mm x 2C', price: 45 },
-      { no: 'E002', name: 'PVC 管 1/2"', price: 120 },
-      { no: 'M001', name: '鍍鋅鋼管 1"', price: 250 },
-      { no: 'S001', name: '不鏽鋼螺絲 M8', price: 5 },
-    ];
-    setProducts(mockProducts);
-    showAlert(`成功模擬匯入 ${mockProducts.length} 筆產品資料`, 'success');
-    setDbModalOpen(false);
+  const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 這裡我們暫時只支援 CSV 上傳作為前端演示
+    // 實際上我們鼓勵直接使用 public/products.csv
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+        const text = evt.target?.result as string;
+        if(text) {
+            // 重複利用上方的 CSV 解析邏輯
+            const lines = text.split('\n');
+            const newProducts: any[] = [];
+            const startIndex = lines[0]?.includes('編號') ? 1 : 0;
+            for (let i = startIndex; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+                const parts = line.split(',');
+                if (parts.length >= 3) {
+                    newProducts.push({
+                        no: parts[0].trim().replace(/^\uFEFF/, ''),
+                        name: parts[1].trim(),
+                        price: parseFloat(parts[2].trim()) || 0
+                    });
+                }
+            }
+            setProducts(newProducts);
+            showAlert(`成功匯入 ${newProducts.length} 筆資料`, 'success');
+            setDbModalOpen(false);
+        }
+    };
+    reader.readAsText(file);
   };
 
   // --- Render ---
@@ -662,7 +727,9 @@ export default function App() {
                  </div>
               </div>
               <div className="flex gap-2 overflow-x-auto py-1">
-                 <button onClick={() => setDbModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 shadow-sm hover:bg-slate-50 whitespace-nowrap"><Database size={16}/> 產品庫</button>
+                 <button onClick={() => setDbModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 shadow-sm hover:bg-slate-50 whitespace-nowrap">
+                    <Database size={16}/> 產品庫 ({products.length})
+                 </button>
                  <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 shadow-sm hover:bg-slate-50 whitespace-nowrap"><FileSpreadsheet size={16}/> 匯出 Excel</button>
               </div>
               <div className="space-y-3">
@@ -750,8 +817,19 @@ export default function App() {
                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600"><Database size={32}/></div>
                <h3 className="font-bold text-xl mb-2 text-slate-800">產品資料庫</h3>
                <p className="text-slate-400 text-sm mb-6">目前共有 {products.length} 筆資料</p>
-               <label className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 cursor-pointer hover:bg-blue-700 active:scale-95 transition-transform mb-3"><Upload size={20} /> 匯入 Excel 檔案<input type="file" accept=".xlsx" className="hidden" onChange={handleExcelImport} /></label>
-               <button onClick={() => setDbModalOpen(false)} className="w-full py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl">關閉</button>
+               
+               {/* 提示訊息 */}
+               <div className="text-left bg-blue-50 p-4 rounded-xl mb-4 border border-blue-100">
+                  <p className="text-xs text-blue-800 font-bold mb-1">💡 如何更新資料庫？</p>
+                  <p className="text-xs text-blue-600 leading-relaxed">請將您的 Excel 轉存為 <code>products.csv</code>，並放入 GitHub 專案的 <code>public</code> 資料夾中，App 將自動載入。</p>
+               </div>
+
+               <div className="flex gap-2">
+                  <button onClick={fetchProducts} disabled={dbLoading} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 hover:bg-blue-700 active:scale-95 transition-transform">
+                     {dbLoading ? <Loader2 className="animate-spin" size={20}/> : <RefreshCw size={20}/>} 重新載入
+                  </button>
+                  <button onClick={() => setDbModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 rounded-xl">關閉</button>
+               </div>
             </div>
          </div>
       )}
