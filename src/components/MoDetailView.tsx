@@ -1,4 +1,5 @@
 import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2, GitMerge, ExternalLink } from 'lucide-react';
+import { utils, writeFile } from 'xlsx'; // 引入 SheetJS
 import type { WorkOrder, WorkOrderItem } from '../types';
 
 interface Props {
@@ -16,55 +17,37 @@ export default function MoDetailView({
   currentWorkOrder, items, onDeleteItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount 
 }: Props) {
   
-  // 匯出 Excel (.xls) 功能
+  // 使用 xlsx 套件匯出真正的 Excel 檔 (.xls)
   const handleExport = () => {
     if (!items || items.length === 0) return;
     
-    // 定義標題列，符合 SampleXG.xls 格式
+    // 1. 準備資料列 (Array of Arrays)
     const headers = ['項目編號(*必填)', '項目名稱(可不填寫)', '數量(*必填)', '倍率(*必填)', '加成(*必填)', '備註(可不填寫)'];
     
-    // 1. 構建 HTML Table 內容
-    let tableHtml = '<table><thead><tr>';
-    headers.forEach(h => {
-        tableHtml += `<th>${h}</th>`;
-    });
-    tableHtml += '</tr></thead><tbody>';
+    const data = items.map((item) => [
+      item.no,       // 項目編號 (字串，保留前導零)
+      item.name,     // 名稱
+      Number(item.qty),      // 數量 (轉為數字)
+      1.0,           // 倍率 (數字)
+      1.0,           // 加成 (數字)
+      ''             // 備註
+    ]);
 
-    items.forEach((item) => {
-      tableHtml += '<tr>';
-      // style="mso-number-format:'\@'" 強制 Excel 將此欄位視為文字，避免 001 被轉成 1
-      tableHtml += `<td style="mso-number-format:'\\@'">${item.no}</td>`;
-      tableHtml += `<td>${item.name}</td>`;
-      tableHtml += `<td>${item.qty}</td>`;
-      tableHtml += `<td>1.0</td>`;
-      tableHtml += `<td>1.0</td>`;
-      tableHtml += `<td></td>`; // 備註空白
-      tableHtml += '</tr>';
-    });
-    tableHtml += '</tbody></table>';
+    // 加上標題列
+    const wsData = [headers, ...data];
 
-    // 2. 組合 Excel XML 模板 (關鍵：設定分頁名稱 <x:Name>ITEM</x:Name>)
-    const excelTemplate = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
-        </head>
-      <body>
-        ${tableHtml}
-      </body>
-      </html>
-    `;
-    
-    // 3. 建立 Blob 並下載
-    const blob = new Blob([excelTemplate], { type: 'application/vnd.ms-excel' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    // 設定下載檔名為 .xls
-    link.setAttribute('download', `${currentWorkOrder?.no || 'export'}_ITEM.xls`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // 2. 建立工作表 (Worksheet)
+    const ws = utils.aoa_to_sheet(wsData);
+
+    // 3. 建立工作簿 (Workbook)
+    const wb = utils.book_new();
+
+    // 4. 將工作表加入工作簿，並命名分頁為 "ITEM"
+    utils.book_append_sheet(wb, ws, "ITEM");
+
+    // 5. 寫入檔案 (bookType: 'biff8' 對應 .xls 格式)
+    const filename = `${currentWorkOrder?.no || 'export'}_ITEM.xls`;
+    writeFile(wb, filename, { bookType: 'biff8' });
   };
 
   return (
