@@ -122,7 +122,7 @@ export default function App() {
        unsubAgree = onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => {
          if(s.exists()) setDraftAgreement(s.data());
          else if (!sharedOwnerId) {
-           // 3. 確保點擊新增工令時，草稿被清空
+           // 3. 點擊新增工令時，要顯示空白協議書
            setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
          }
        });
@@ -192,6 +192,7 @@ export default function App() {
     if(woModal.data.status==='MO' && (!woModal.data.subNo || woModal.data.subNo.length<2)) return setDialog({isOpen:true, type:'error', message:'MO 狀態需填寫分工令'});
     const id = woModal.data.id;
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { ...woModal.data, updatedAt: serverTimestamp() }, {merge:true});
+    // 同步更新協議書的工令編號與名稱
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), { woNo: woModal.data.no, woName: woModal.data.name }, {merge: true});
     setWoModal({isOpen:false, data:null});
     if(!currentWOId) setCurrentWOId(id);

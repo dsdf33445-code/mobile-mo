@@ -1,12 +1,13 @@
 import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2, GitMerge } from 'lucide-react';
 
-export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, onAddClick, onExcelExport, onReloadDb, onMergeClick, dbLoading, productCount }: any) {
+// 修正：移除未使用的 onExcelExport
+export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount }: any) {
   
   // 實作簡易 Excel (CSV) 匯出功能 - 格式更新 (SampleXG.xls)
   const handleExport = () => {
     if (!items || items.length === 0) return;
     
-    // 定義 CSV 標頭 (符合上傳檔案格式)
+    // 2. 修改匯出格式：倍率與加成帶入1.0，備註空白
     const headers = ['項目編號(*必填)', '項目名稱(可不填寫)', '數量(*必填)', '倍率(*必填)', '加成(*必填)', '備註(可不填寫)'];
     
     // 轉換資料列
