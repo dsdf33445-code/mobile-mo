@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, X, PenTool, FileText, Link, Maximize, FileSignature, Send, Printer } from 'lucide-react';
+// 修正：移除未使用的 Link
+import { ChevronDown, ChevronUp, X, PenTool, FileText, Maximize, FileSignature, Send, Printer } from 'lucide-react';
 import { CONTRACTOR_OPTIONS, SAFETY_CHECK_ITEMS, SIGNATURE_ROLES } from '../constants';
 
 export default function AgreementView({ 
