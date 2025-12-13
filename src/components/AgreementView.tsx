@@ -114,18 +114,21 @@ export default function AgreementView({
 
           <div className="print:break-inside-avoid">
             <h4 className="font-bold text-slate-800 mb-3 text-sm print:text-black">簽名確認</h4>
-            <div className="grid gap-3 print:grid-cols-3 print:gap-4">
+            {/* 修改：列印時將 gap-4 改為 gap-2 以節省空間 */}
+            <div className="grid gap-3 print:grid-cols-3 print:gap-2">
               {SIGNATURE_ROLES.map(role => (
-                <div key={role.id} onClick={() => !data.signatures?.[role.id] && onSigning(role)} className={`p-3 rounded-xl border-2 border-dashed transition-all cursor-pointer print:border print:border-black print:rounded-none ${data.signatures?.[role.id] ? 'border-blue-200 bg-blue-50/30 print:bg-transparent' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'}`}>
+                // 修改：列印時加入 print:p-1 縮小內距
+                <div key={role.id} onClick={() => !data.signatures?.[role.id] && onSigning(role)} className={`p-3 print:p-1 rounded-xl border-2 border-dashed transition-all cursor-pointer print:border print:border-black print:rounded-none ${data.signatures?.[role.id] ? 'border-blue-200 bg-blue-50/30 print:bg-transparent' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'}`}>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-xs font-bold text-slate-500 print:text-black">{role.label}</span>
                     {data.signatures?.[role.id] && <button onClick={(e) => { e.stopPropagation(); onClearSignature(role.id); }} className="text-red-400 p-1 no-print"><X size={14}/></button>}
                   </div>
                   {data.signatures?.[role.id] ? (
                     <div className="flex flex-col items-center">
-                      {/* 修正：將 h-16 改為 h-32，放大簽名顯示區域 */}
-                      <img src={data.signatures[role.id]!.img} alt="簽名" className="h-32 object-contain mix-blend-multiply" />
-                      <input type="date" value={data.signatures[role.id]!.date} onClick={e => e.stopPropagation()} onChange={e => onDateChange(role.id, e.target.value)} className="text-xs border rounded px-1 mt-1 text-gray-500 print:border-0 print:text-black" />
+                      {/* 修改：螢幕顯示 h-32，列印時縮小為 h-20 */}
+                      <img src={data.signatures[role.id]!.img} alt="簽名" className="h-32 print:h-20 object-contain mix-blend-multiply" />
+                      {/* 修改：列印時移除上方 margin (print:mt-0) */}
+                      <input type="date" value={data.signatures[role.id]!.date} onClick={e => e.stopPropagation()} onChange={e => onDateChange(role.id, e.target.value)} className="text-xs border rounded px-1 mt-1 print:mt-0 text-gray-500 print:border-0 print:text-black" />
                     </div>
                   ) : (
                     <div className="h-16 flex items-center justify-center text-slate-300 gap-2 no-print"><PenTool size={16}/> 點擊簽名</div>
