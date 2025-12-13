@@ -63,9 +63,10 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/90 z-[70] flex flex-col justify-end sm:justify-center animate-in fade-in">
-      <div className="bg-white w-full max-w-lg mx-auto rounded-t-3xl sm:rounded-3xl flex flex-col shadow-2xl h-[70vh] sm:h-[500px]">
-        <div className="p-4 bg-slate-50 border-b flex justify-between items-center">
+    <div className="fixed inset-0 bg-slate-900 z-[80] flex flex-col justify-end sm:justify-center animate-in fade-in">
+      {/* 2. 修正簽名板版面，確保按鈕區域可見且可點擊 */}
+      <div className="bg-white w-full max-w-lg mx-auto sm:rounded-3xl flex flex-col shadow-2xl h-full sm:h-[600px]">
+        <div className="p-4 bg-slate-50 border-b flex justify-between items-center shrink-0">
           <h3 className="font-bold text-lg text-slate-800">請簽名：{title}</h3>
           <button onClick={onClose}><X size={24} className="text-slate-500"/></button>
         </div>
@@ -75,9 +76,9 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
             onTouchStart={start} onTouchMove={move} onTouchEnd={end} />
           <div className="absolute bottom-2 left-0 right-0 text-center text-slate-200 pointer-events-none text-4xl font-bold opacity-20">簽署區域</div>
         </div>
-        <div className="p-4 border-t bg-slate-50 flex gap-3 safe-area-bottom">
-          <button onClick={() => ctxRef.current?.clearRect(0,0,canvasRef.current!.width,canvasRef.current!.height)} className="flex-1 py-3 bg-white border rounded-xl font-bold flex justify-center gap-2 shadow-sm"><Eraser size={20}/> 重寫</button>
-          <button onClick={save} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg flex justify-center gap-2"><CheckCircle2 size={20}/> 完成</button>
+        <div className="p-4 border-t bg-slate-50 flex gap-3 safe-area-bottom shrink-0 z-10">
+          <button onClick={() => ctxRef.current?.clearRect(0,0,canvasRef.current!.width,canvasRef.current!.height)} className="flex-1 py-3 bg-white border rounded-xl font-bold flex justify-center gap-2 shadow-sm active:bg-gray-100 transition-colors"><Eraser size={20}/> 重寫</button>
+          <button onClick={save} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg flex justify-center gap-2 active:bg-blue-700 transition-colors"><CheckCircle2 size={20}/> 確認</button>
         </div>
       </div>
     </div>

@@ -1,6 +1,6 @@
-import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2 } from 'lucide-react';
+import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2, GitMerge } from 'lucide-react';
 
-export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, onAddClick, onExcelExport, onReloadDb, dbLoading, productCount }: any) {
+export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, onAddClick, onExcelExport, onReloadDb, onMergeClick, dbLoading, productCount }: any) {
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500 pb-20">
       <div className="bg-slate-900 text-white p-5 rounded-3xl shadow-xl shadow-slate-900/20 relative overflow-hidden">
@@ -32,12 +32,20 @@ export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, on
               <div className="flex gap-4 text-xs text-slate-500">
                 <span>單價: ${item.price}</span>
                 <span className="text-blue-600 font-bold">數量: {item.qty}</span>
+                {/* 顯示備註 (例如合併來源) */}
+                {item.remark && <span className="text-purple-600 bg-purple-50 px-1 rounded ml-2 truncate max-w-[100px]">{item.remark}</span>}
               </div>
             </div>
             <button onClick={() => onDeleteItem(item.id)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full"><Trash2 size={18}/></button>
           </div>
         ))}
       </div>
+
+      {/* 4. 合併按鈕 (位於新增按鈕上方) */}
+      <button onClick={onMergeClick} className="fixed bottom-40 right-6 w-12 h-12 bg-purple-600 text-white rounded-full shadow-lg shadow-purple-600/40 flex items-center justify-center hover:bg-purple-700 active:scale-90 transition-all z-30" title="合併工令">
+        <GitMerge size={20} />
+      </button>
+
       <button onClick={onAddClick} className="fixed bottom-24 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-600/40 flex items-center justify-center hover:bg-blue-700 active:scale-90 transition-all z-30"><Plus size={28} /></button>
     </div>
   );

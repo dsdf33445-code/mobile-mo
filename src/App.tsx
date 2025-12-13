@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { signInWithPopup, signOut, onAuthStateChanged, type User } from 'firebase/auth';
-import { collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, serverTimestamp, orderBy } from 'firebase/firestore';
-// 修正：補回 App.tsx 實際使用到的圖示 (FileSpreadsheet, PenTool, X 等)
-import { FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, LogOut, Loader2, User as UserIcon } from 'lucide-react';
+import { collection, doc, setDoc, getDoc, deleteDoc, getDocs, query, where, serverTimestamp, orderBy } from 'firebase/firestore';
+import { 
+  FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, LogOut, Loader2, User as UserIcon, 
+  GitMerge, CheckSquare, Square 
+} from 'lucide-react';
 
-// 引入拆分後的檔案
 import { auth, db, provider } from './firebase';
 import SignaturePad from './components/SignaturePad';
 import AgreementView from './components/AgreementView';
@@ -31,6 +32,7 @@ export default function App() {
   const [dialog, setDialog] = useState<any>({ isOpen: false });
   const [woModal, setWoModal] = useState<any>({ isOpen: false, data: null });
   const [itemModal, setItemModal] = useState<any>({ isOpen: false, data: null });
+  const [mergeModal, setMergeModal] = useState<any>({ isOpen: false, selectedIds: [] }); // 4. 合併工令 Modal
   const [signingRole, setSigningRole] = useState<any>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
@@ -40,13 +42,9 @@ export default function App() {
   const currentItems = useMemo(() => items.filter(i => i.workOrderId === currentWOId), [items, currentWOId]);
 
   // --- Effects ---
-
   useEffect(() => {
-    const initAuth = async () => {
-        setLoading(true);
-    };
+    const initAuth = async () => { setLoading(true); };
     initAuth();
-    
     const unsub = onAuthStateChanged(auth, u => { setUser(u); setLoading(false); });
     const params = new URLSearchParams(window.location.search);
     const shareId = params.get('shareId');
@@ -60,7 +58,6 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // Fetch Products
   const fetchProducts = async () => {
     setDbLoading(true);
     try {
@@ -90,7 +87,6 @@ export default function App() {
   };
   useEffect(() => { fetchProducts(); }, []);
 
-  // Firestore Sync
   useEffect(() => {
     if (!user && !sharedOwnerId) return;
     const uid = sharedOwnerId || user?.uid;
@@ -114,7 +110,7 @@ export default function App() {
     return () => { unsubWO(); unsubItems(); unsubAgree(); };
   }, [user, currentWOId, sharedOwnerId]);
 
-  // Handlers
+  // --- Handlers ---
   const handleLogin = async () => { try { setLoading(true); await signInWithPopup(auth, provider); } catch(e) { setDialog({isOpen:true, type:'error', message:'登入失敗'}); setLoading(false); } };
   const handleLogout = () => signOut(auth);
   
@@ -166,11 +162,25 @@ export default function App() {
     setCurrentWOId(id); setActiveTab('wo'); setDialog({isOpen:true, type:'alert', message:'建立成功'});
   };
 
+  // 3. 編輯工令：包含工令編號與名稱，並同步至協議書
   const handleSaveWO = async () => {
     if(!woModal.data.no || !woModal.data.name) return;
     if(woModal.data.status==='MO' && (!woModal.data.subNo || woModal.data.subNo.length<2)) return setDialog({isOpen:true, type:'error', message:'MO 狀態需填寫分工令'});
-    const id = woModal.data.id || doc(collection(db, 'dummy')).id;
-    await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { ...woModal.data, updatedAt: serverTimestamp(), createdAt: woModal.data.createdAt || serverTimestamp() }, {merge:true});
+    
+    const id = woModal.data.id;
+    
+    // 更新工令資料
+    await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { 
+      ...woModal.data, 
+      updatedAt: serverTimestamp() 
+    }, {merge:true});
+
+    // 3. 同步更新協議書的工令編號與名稱
+    await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), {
+      woNo: woModal.data.no,
+      woName: woModal.data.name
+    }, {merge: true});
+
     setWoModal({isOpen:false, data:null});
     if(!currentWOId) setCurrentWOId(id);
   };
@@ -180,6 +190,57 @@ export default function App() {
     const id = itemModal.data.id || doc(collection(db, 'dummy')).id;
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items', id), { ...itemModal.data, workOrderId: currentWOId, qty: Number(itemModal.data.qty), price: Number(itemModal.data.price||0) });
     setItemModal({isOpen:false, data:null});
+  };
+
+  // 4. 合併工令邏輯
+  const handleMergeWorkOrders = async () => {
+    if (mergeModal.selectedIds.length === 0) return;
+    setLoading(true);
+    try {
+      const sourceWos = workOrders.filter(w => mergeModal.selectedIds.includes(w.id));
+      
+      // 讀取所有要合併的項目
+      const q = query(collection(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items'), where('workOrderId', 'in', mergeModal.selectedIds));
+      const querySnapshot = await getDocs(q);
+      const sourceItems = querySnapshot.docs.map(d => d.data());
+
+      // 逐一處理項目
+      for (const srcItem of sourceItems) {
+        // 檢查目前工令是否已有此項目 (相同編號)
+        const existingItem = currentItems.find(i => i.no === srcItem.no);
+        
+        if (existingItem) {
+          // 若有：疊加數量，更新備註
+          const newQty = Number(existingItem.qty) + Number(srcItem.qty);
+          // 找出來源工令編號
+          const srcWo = sourceWos.find(w => w.id === srcItem.workOrderId);
+          const remark = existingItem.remark 
+            ? `${existingItem.remark}, ${srcWo?.no}` 
+            : `合併自: ${srcWo?.no}`;
+            
+          await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items', existingItem.id), {
+            qty: newQty,
+            remark: remark
+          }, { merge: true });
+        } else {
+          // 若無：新增項目
+          const srcWo = sourceWos.find(w => w.id === srcItem.workOrderId);
+          const newId = doc(collection(db, 'dummy')).id;
+          await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items', newId), {
+            ...srcItem,
+            workOrderId: currentWOId,
+            remark: `合併自: ${srcWo?.no}`
+          });
+        }
+      }
+      setDialog({isOpen:true, type:'success', message:`成功合併 ${sourceItems.length} 個項目`});
+      setMergeModal({ isOpen: false, selectedIds: [] });
+    } catch (e) {
+      console.error(e);
+      setDialog({isOpen:true, type:'error', message:'合併失敗'});
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleDelete = (col: string, id: string) => {
@@ -245,7 +306,8 @@ export default function App() {
             onDeleteItem={(id:string) => handleDelete('items', id)}
             onAddClick={() => { setItemModal({isOpen:true, data:{no:'', name:'', qty:'', price:0}}); setShowSuggestions(false); }}
             onReloadDb={fetchProducts}
-            onExcelExport={() => {/* Excel export logic preserved */}}
+            onMergeClick={() => setMergeModal({ isOpen: true, selectedIds: [] })} // 4. 開啟合併視窗
+            onExcelExport={() => {/* Excel logic */}}
           />
         )}
       </main>
@@ -254,21 +316,68 @@ export default function App() {
 
       {signingRole && <SignaturePad title={signingRole.label} onSave={handleSignatureSave} onClose={() => setSigningRole(null)} />}
       
+      {/* 3. 編輯工令 Modal (更新) */}
       {woModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
               <h3 className="font-bold text-lg mb-4">編輯工令</h3>
-              <div className="space-y-3">
-                 <input type="text" value={woModal.data.no} readOnly className="w-full bg-slate-100 p-3 rounded-xl font-bold" />
-                 <select value={woModal.data.status} onChange={e => setWoModal({...woModal, data:{...woModal.data, status:e.target.value}})} className="w-full border p-3 rounded-xl"><option>接收工令</option><option>MO</option><option>已完工</option><option>已結案</option></select>
+              <div className="space-y-4">
+                 <div>
+                    <label className="text-xs font-bold text-gray-500 block mb-1">工令編號</label>
+                    <input type="text" value={woModal.data.no} onChange={e => setWoModal({...woModal, data:{...woModal.data, no:e.target.value.toUpperCase()}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold" />
+                 </div>
+                 <div>
+                    <label className="text-xs font-bold text-gray-500 block mb-1">工程名稱</label>
+                    <input type="text" value={woModal.data.name} onChange={e => setWoModal({...woModal, data:{...woModal.data, name:e.target.value}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold" />
+                 </div>
+                 <div>
+                    <label className="text-xs font-bold text-gray-500 block mb-1">狀態</label>
+                    <select value={woModal.data.status} onChange={e => setWoModal({...woModal, data:{...woModal.data, status:e.target.value}})} className="w-full border p-3 rounded-xl"><option>接收工令</option><option>MO</option><option>已完工</option><option>已結案</option></select>
+                 </div>
                  {woModal.data.status==='MO' && <div><label className="text-xs text-blue-500 font-bold block mb-1">分工令 (必填)</label><input type="text" maxLength={2} value={woModal.data.subNo||''} onChange={e => setWoModal({...woModal, data:{...woModal.data, subNo:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'')}})} className="w-full border-2 border-blue-200 p-3 rounded-xl font-mono font-bold text-center text-xl" /></div>}
-                 <button onClick={handleSaveWO} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold mt-2">儲存</button>
-                 <button onClick={() => setWoModal({isOpen:false})} className="w-full py-3 text-slate-500 font-bold">取消</button>
+                 
+                 <div className="flex gap-2 pt-2">
+                    <button onClick={() => setWoModal({isOpen:false})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button>
+                    <button onClick={handleSaveWO} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg">儲存</button>
+                 </div>
               </div>
            </div>
         </div>
       )}
 
+      {/* 4. 合併工令 Modal */}
+      {mergeModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+           <div className="bg-white w-full max-w-sm rounded-3xl flex flex-col shadow-xl animate-in zoom-in-95 max-h-[80vh]">
+              <div className="p-4 border-b flex justify-between items-center"><h3 className="font-bold text-lg flex gap-2"><GitMerge/> 合併工令</h3><button onClick={() => setMergeModal({isOpen:false})}><X/></button></div>
+              <div className="p-4 overflow-y-auto flex-1 space-y-2">
+                 <p className="text-xs text-gray-500 mb-2">請選擇要合併進來的工令 (可多選)：</p>
+                 {workOrders.filter(w => w.id !== currentWOId).map(wo => (
+                   <div key={wo.id} onClick={() => {
+                      const exists = mergeModal.selectedIds.includes(wo.id);
+                      setMergeModal({
+                        ...mergeModal, 
+                        selectedIds: exists ? mergeModal.selectedIds.filter((id:string) => id !== wo.id) : [...mergeModal.selectedIds, wo.id]
+                      });
+                   }} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${mergeModal.selectedIds.includes(wo.id) ? 'bg-blue-50 border-blue-300' : 'bg-white hover:bg-slate-50'}`}>
+                      <div className={`text-blue-600 ${mergeModal.selectedIds.includes(wo.id) ? 'opacity-100' : 'opacity-30'}`}>{mergeModal.selectedIds.includes(wo.id) ? <CheckSquare size={20}/> : <Square size={20}/>}</div>
+                      <div className="flex-1 min-w-0">
+                        <span className="font-bold block text-slate-800 text-sm">{wo.no}</span>
+                        <span className="text-xs text-slate-500 truncate block">{wo.name}</span>
+                      </div>
+                   </div>
+                 ))}
+                 {workOrders.length <= 1 && <div className="text-center text-gray-400 py-4">沒有其他工令可供合併</div>}
+              </div>
+              <div className="p-4 border-t flex gap-2">
+                 <button onClick={() => setMergeModal({isOpen:false})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button>
+                 <button onClick={handleMergeWorkOrders} disabled={mergeModal.selectedIds.length === 0} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none">確認合併</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Item Modal (不變) */}
       {itemModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-xl animate-in slide-in-from-bottom-10">
@@ -301,6 +410,13 @@ export default function App() {
             </div>
          </div>
       )}
+      {/* 1. 全域樣式：移除輸入框箭頭 */}
+      <style>{`
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        .no-arrow { -moz-appearance: textfield; }
+        @supports (padding-bottom: env(safe-area-inset-bottom)) { .safe-area-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + 1rem); } }
+        @supports (padding-top: env(safe-area-inset-top)) { .safe-area-top { padding-top: calc(env(safe-area-inset-top) + 0.5rem); } }
+      `}</style>
     </div>
   );
 }
