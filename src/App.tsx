@@ -7,7 +7,7 @@ import {
   GoogleAuthProvider, 
   signOut, 
   onAuthStateChanged,
-  User
+  type User // 修正 1: 加上 type 關鍵字
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -17,14 +17,15 @@ import {
   deleteDoc, 
   onSnapshot, 
   query, 
-  where, 
+  // where, // 修正 2: 移除未使用的 where
   serverTimestamp,
   orderBy
 } from 'firebase/firestore';
 import { 
-  Plus, Edit2, Trash2, X, Save, FileSpreadsheet, 
+  Plus, Edit2, Trash2, X, FileSpreadsheet, 
   ArrowRight, AlertTriangle, CheckCircle2, Search, 
-  GitMerge, CheckSquare, Square, Database, Upload, 
+  // GitMerge, CheckSquare, Square, // 修正 2: 移除未使用的圖標
+  Database, Upload, 
   PenTool, ChevronDown, ChevronUp, Eraser, FileSignature, 
   Share2, Maximize, Minimize, LogOut, Loader2,
   FileText, ClipboardList, User as UserIcon
@@ -309,11 +310,8 @@ export default function App() {
     setDialog({ isOpen: true, type: 'confirm', message, onConfirm });
   };
 
-  // 修正：即使沒有 WO ID (新增模式)，也要更新 Local State
   const saveAgreement = async (newData: any) => {
-    setDraftAgreement(newData); // 1. 無論如何先更新畫面
-    
-    // 2. 只有在已有工令 ID (編輯模式) 且有登入時，才寫入資料庫
+    setDraftAgreement(newData);
     if (user && currentWOId) {
       try {
         await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid, 'agreements', currentWOId), newData, { merge: true });
@@ -391,7 +389,8 @@ export default function App() {
     });
   };
 
-  const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 修正 3: 移除未使用的參數 'e'
+  const handleExcelImport = () => {
     const mockProducts = [
       { no: 'E001', name: '控制電纜 CVV 3.5mm x 2C', price: 45 },
       { no: 'E002', name: 'PVC 管 1/2"', price: 120 },
