@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { signInWithPopup, signOut, onAuthStateChanged, type User } from 'firebase/auth';
 import { collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, serverTimestamp, orderBy } from 'firebase/firestore';
 // 修正：補回 App.tsx 實際使用到的圖示 (FileSpreadsheet, PenTool, X 等)
-import { FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, Maximize, LogOut, Loader2, User as UserIcon } from 'lucide-react';
+import { FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, LogOut, Loader2, User as UserIcon } from 'lucide-react';
 
 // 引入拆分後的檔案
 import { auth, db, provider } from './firebase';
