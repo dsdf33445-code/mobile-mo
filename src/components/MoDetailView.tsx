@@ -42,11 +42,21 @@ export default function MoDetailView({
     // 3. 建立工作簿 (Workbook)
     const wb = utils.book_new();
 
-    // 4. 將工作表加入工作簿，並命名分頁為 "ITEM"
+    // 4. 將工作表加入工作簿，並命名分頁為 "ITEM" (維持不變)
     utils.book_append_sheet(wb, ws, "ITEM");
 
-    // 5. 寫入檔案 (bookType: 'biff8' 對應 .xls 格式)
-    const filename = `${currentWorkOrder?.no || 'export'}_ITEM.xls`;
+    // 5. 產生檔名：Y641A123-01_2025.12.13.xls
+    const no = currentWorkOrder?.no || 'export';
+    const sub = currentWorkOrder?.subNo ? `-${currentWorkOrder.subNo}` : ''; // 若有分工令才加 -
+    
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    
+    const filename = `${no}${sub}_${yyyy}.${mm}.${dd}.xls`;
+
+    // 6. 寫入檔案 (bookType: 'biff8' 對應 .xls 格式)
     writeFile(wb, filename, { bookType: 'biff8' });
   };
 
