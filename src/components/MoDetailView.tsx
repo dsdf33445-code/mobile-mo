@@ -1,4 +1,4 @@
-import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2, GitMerge } from 'lucide-react';
+import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2, GitMerge, ExternalLink } from 'lucide-react';
 import type { WorkOrder, WorkOrderItem } from '../types';
 
 interface Props {
@@ -16,7 +16,7 @@ export default function MoDetailView({
   currentWorkOrder, items, onDeleteItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount 
 }: Props) {
   
-  // 修改：改為匯出包含分頁設定的 .xls 格式 (HTML based Excel)
+  // 匯出包含分頁設定的 .xls 格式 (HTML based Excel)
   const handleExport = () => {
     if (!items || items.length === 0) return;
     
@@ -42,7 +42,7 @@ export default function MoDetailView({
     });
     tableHtml += '</tbody></table>';
 
-    // 2. 組合 Excel XML 模板 (為了設定分頁名稱為 ITEM)
+    // 2. 組合 Excel XML 模板 (設定分頁名稱為 ITEM)
     const excelTemplate = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -59,7 +59,7 @@ export default function MoDetailView({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    // 副檔名改為 .xls
+    // 副檔名改為 .xls 以配合 MIME type，這會導致開啟時出現格式警告，但能保留分頁名稱
     link.setAttribute('download', `${currentWorkOrder?.no || 'export'}_ITEM.xls`);
     document.body.appendChild(link);
     link.click();
@@ -91,14 +91,28 @@ export default function MoDetailView({
         </div>
       </div>
       
-      <div className="flex gap-2 overflow-x-auto py-1">
+      {/* 按鈕區域：使用 justify-between 將左右分開 */}
+      <div className="flex justify-between items-center py-1 overflow-x-auto">
+         {/* 左側：更新資料庫 */}
          <button onClick={onReloadDb} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 shadow-sm hover:bg-slate-50 whitespace-nowrap active:scale-95 transition-transform">
             {dbLoading ? <Loader2 className="animate-spin" size={14}/> : <RefreshCw size={14}/>} 
             更新資料庫 ({productCount})
          </button>
-         <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-green-700 shadow-sm hover:bg-green-50 whitespace-nowrap active:scale-95 transition-transform">
-            <FileSpreadsheet size={16}/> 匯出 Excel
-         </button>
+
+         {/* 右側群組：前往 MO & 匯出 Excel */}
+         <div className="flex gap-2 ml-2">
+            <a 
+              href="https://dsz.csc.com.tw/dsz/login/dszs0?action=https://cscqs01.csc.com.tw/qs_home/QS_HOME_Redirect.ASP%3FECinfo=MO01" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-blue-600 shadow-sm hover:bg-blue-50 whitespace-nowrap active:scale-95 transition-transform no-underline"
+            >
+              <ExternalLink size={16}/> 前往 MO
+            </a>
+            <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-green-700 shadow-sm hover:bg-green-50 whitespace-nowrap active:scale-95 transition-transform">
+                <FileSpreadsheet size={16}/> 匯出 Excel
+            </button>
+         </div>
       </div>
 
       <div className="space-y-3">
@@ -117,7 +131,8 @@ export default function MoDetailView({
                     <h3 className="font-bold text-slate-800 text-sm truncate">{item.name}</h3>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg inline-flex">
-                    <span>單價: <span className="font-mono">${item.price}</span></span>
+                    {/* 修改：單價加入千分位顯示 */}
+                    <span>單價: <span className="font-mono">${item.price.toLocaleString()}</span></span>
                     <div className="w-px h-3 bg-slate-300"></div>
                     <span className="text-blue-600 font-bold">數量: {item.qty}</span>
                     <div className="w-px h-3 bg-slate-300"></div>
