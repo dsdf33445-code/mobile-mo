@@ -17,10 +17,9 @@ import {
 } from 'firebase/firestore';
 import { 
   FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, LogOut, Loader2, User as UserIcon, 
-  GitMerge, CheckSquare, Square 
+  GitMerge, CheckSquare, Square, Maximize, Link 
 } from 'lucide-react';
 
-// 確保路徑與檔案結構一致
 import { auth, db, provider } from './firebase';
 import SignaturePad from './components/SignaturePad';
 import AgreementView from './components/AgreementView';
@@ -114,7 +113,6 @@ export default function App() {
        return onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => s.exists() && setDraftAgreement(s.data()));
     }
 
-    // 修正：為 onSnapshot 的 callback 加上型別註解
     const unsubWO = onSnapshot(query(collection(db, 'artifacts', 'mobile-mo', 'users', uid, 'workOrders'), orderBy('createdAt', 'desc')), (s: QuerySnapshot) => setWorkOrders(s.docs.map(d => ({id:d.id, ...d.data()}))));
     const unsubItems = onSnapshot(query(collection(db, 'artifacts', 'mobile-mo', 'users', uid, 'items')), (s: QuerySnapshot) => setItems(s.docs.map(d => ({id:d.id, ...d.data()}))));
     
@@ -185,7 +183,6 @@ export default function App() {
     if(woModal.data.status==='MO' && (!woModal.data.subNo || woModal.data.subNo.length<2)) return setDialog({isOpen:true, type:'error', message:'MO 狀態需填寫分工令'});
     const id = woModal.data.id;
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { ...woModal.data, updatedAt: serverTimestamp() }, {merge:true});
-    // 同步更新協議書的工令編號與名稱
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), { woNo: woModal.data.no, woName: woModal.data.name }, {merge: true});
     setWoModal({isOpen:false, data:null});
     if(!currentWOId) setCurrentWOId(id);
@@ -293,7 +290,7 @@ export default function App() {
             onAddClick={() => { setItemModal({isOpen:true, data:{no:'', name:'', qty:'', price:0}}); setShowSuggestions(false); }}
             onReloadDb={fetchProducts}
             onMergeClick={() => setMergeModal({ isOpen: true, selectedIds: [] })}
-            onExcelExport={() => {}}
+            onExcelExport={() => {}} // 實際的匯出邏輯在 MoDetailView 內部實作
           />
         )}
       </main>
@@ -343,21 +340,34 @@ export default function App() {
         </div>
       )}
 
+      {/* 1. Item Modal: 新增標籤 (Label) */}
       {itemModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-xl animate-in slide-in-from-bottom-10">
               <div className="flex justify-between mb-4"><h3 className="font-bold">新增項目</h3><button onClick={() => setItemModal({isOpen:false})}><X size={20}/></button></div>
-              <div className="space-y-3">
+              <div className="space-y-4">
                  <div className="relative">
+                    <label className="text-xs font-bold text-gray-500 block mb-1">項目編號</label>
                     <input type="text" value={itemModal.data.no} onChange={e => { const v=e.target.value.toUpperCase(); setItemModal({...itemModal, data:{...itemModal.data, no:v}}); if(v) { setFilteredProducts(products.filter(p=>p.no.includes(v)||p.name.includes(v))); setShowSuggestions(true); } else setShowSuggestions(false); }} className="w-full border p-3 rounded-xl font-mono" placeholder="搜尋編號..." />
                     {showSuggestions && <ul className="absolute z-10 w-full bg-white border shadow-xl max-h-40 overflow-y-auto">{filteredProducts.map(p=><li key={p.no} onClick={() => { setItemModal({...itemModal, data:{...itemModal.data, no:p.no, name:p.name, price:p.price}}); setShowSuggestions(false); }} className="p-3 hover:bg-blue-50 border-b cursor-pointer"><span className="font-bold text-blue-600 font-mono block">{p.no}</span><span className="text-xs">{p.name}</span></li>)}</ul>}
                  </div>
-                 <input type="text" readOnly value={itemModal.data.name} className="w-full bg-slate-100 p-3 rounded-xl" />
-                 <div className="flex gap-2">
-                    <input type="number" readOnly value={itemModal.data.price} className="flex-1 bg-slate-100 p-3 rounded-xl text-center" />
-                    <input type="number" value={itemModal.data.qty} onChange={e => setItemModal({...itemModal, data:{...itemModal.data, qty:e.target.value}})} className="flex-1 border p-3 rounded-xl text-center font-bold text-blue-600" autoFocus />
+                 
+                 <div>
+                    <label className="text-xs font-bold text-gray-500 block mb-1">項目名稱</label>
+                    <input type="text" readOnly value={itemModal.data.name} className="w-full bg-slate-100 p-3 rounded-xl" />
                  </div>
-                 <button onClick={handleSaveItem} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold">儲存</button>
+                 
+                 <div className="flex gap-3">
+                    <div className="flex-1">
+                        <label className="text-xs font-bold text-gray-500 block mb-1">單價</label>
+                        <input type="number" readOnly value={itemModal.data.price} className="w-full bg-slate-100 p-3 rounded-xl text-center" />
+                    </div>
+                    <div className="flex-1">
+                        <label className="text-xs font-bold text-gray-500 block mb-1">數量</label>
+                        <input type="number" value={itemModal.data.qty} onChange={e => setItemModal({...itemModal, data:{...itemModal.data, qty:e.target.value}})} className="w-full border p-3 rounded-xl text-center font-bold text-blue-600" autoFocus />
+                    </div>
+                 </div>
+                 <button onClick={handleSaveItem} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold mt-2 shadow-lg">儲存</button>
               </div>
            </div>
         </div>
