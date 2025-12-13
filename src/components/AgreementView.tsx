@@ -1,29 +1,35 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, X, PenTool, FileText, Link, Maximize, FileSignature } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, PenTool, FileText, Link, Maximize, FileSignature, Send, Printer } from 'lucide-react';
 import { CONTRACTOR_OPTIONS, SAFETY_CHECK_ITEMS, SIGNATURE_ROLES } from '../constants';
 
 export default function AgreementView({ 
   data, currentWOId, isSigningMode, isShared, 
-  onChange, onToggleSafety, onSigning, onClearSignature, onDateChange, onCreate, onShare, onExitSigning 
+  onChange, onToggleSafety, onSigning, onClearSignature, onDateChange, onCreate, onTransfer, onExitSigning 
 }: any) {
   const [isSafetyExpanded, setIsSafetyExpanded] = useState(false);
   
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* 建立新協議書標題 */}
       {!isSigningMode && !currentWOId && !isShared && (
-        <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-2xl shadow-lg flex justify-between">
+        <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-2xl shadow-lg flex justify-between no-print">
           <div><h2 className="font-bold text-lg">建立新協議書</h2><p className="text-blue-100 text-xs mt-1">填寫下方資料後建立工令</p></div>
           <div className="bg-white/20 p-2 rounded-xl"><FileText size={24} /></div>
         </div>
       )}
+      
+      {/* 查案狀態 Bar */}
       {currentWOId && !isSigningMode && (
-        <div className="bg-blue-50 border border-blue-100 p-3 rounded-2xl flex justify-between items-center">
+        <div className="bg-blue-50 border border-blue-100 p-3 rounded-2xl flex justify-between items-center no-print">
           <div className="flex items-center gap-2">
             <span className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-lg">查案中</span>
             <span className="font-bold text-blue-900">{data.woNo}</span>
           </div>
           <div className="flex gap-2">
-            <button onClick={onShare} className="p-2 text-blue-600 bg-white rounded-full shadow-sm active:scale-95"><Link size={18}/></button>
+             {/* 3. 轉交按鈕 */}
+            <button onClick={onTransfer} className="p-2 text-blue-600 bg-white rounded-full shadow-sm active:scale-95" title="轉交"><Send size={18}/></button>
+             {/* 5. 列印按鈕 */}
+            <button onClick={() => window.print()} className="p-2 text-blue-600 bg-white rounded-full shadow-sm active:scale-95" title="列印 PDF"><Printer size={18}/></button>
             <button onClick={() => onExitSigning(true)} className="p-2 text-blue-600 bg-white rounded-full shadow-sm active:scale-95"><Maximize size={18}/></button>
           </div>
         </div>
@@ -72,7 +78,7 @@ export default function AgreementView({
           <hr className="border-slate-100"/>
 
           <div className="rounded-2xl border border-slate-100 overflow-hidden">
-            <button onClick={() => setIsSafetyExpanded(!isSafetyExpanded)} className="w-full flex justify-between items-center p-4 bg-slate-50 hover:bg-slate-100">
+            <button onClick={() => setIsSafetyExpanded(!isSafetyExpanded)} className="w-full flex justify-between items-center p-4 bg-slate-50 hover:bg-slate-100 no-print">
               <span className="font-bold text-slate-700 text-sm">施工前安全確認事項 ({data.safetyChecks?.length || 0}/20)</span>
               {isSafetyExpanded ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
             </button>
@@ -86,6 +92,13 @@ export default function AgreementView({
                 ))}
               </div>
             )}
+            {/* 列印時只顯示已勾選的項目 */}
+            <div className="hidden print-only p-4">
+                 <h4 className="font-bold mb-2">安全確認事項：</h4>
+                 {SAFETY_CHECK_ITEMS.filter((_, i) => (data.safetyChecks || []).includes(i)).map(item => (
+                     <div key={item} className="text-sm mb-1">☑ {item}</div>
+                 ))}
+            </div>
           </div>
 
           <div>
@@ -95,7 +108,7 @@ export default function AgreementView({
                 <div key={role.id} onClick={() => !data.signatures?.[role.id] && onSigning(role)} className={`p-3 rounded-xl border-2 border-dashed transition-all cursor-pointer ${data.signatures?.[role.id] ? 'border-blue-200 bg-blue-50/30' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'}`}>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-xs font-bold text-slate-500">{role.label}</span>
-                    {data.signatures?.[role.id] && <button onClick={(e) => { e.stopPropagation(); onClearSignature(role.id); }} className="text-red-400 p-1"><X size={14}/></button>}
+                    {data.signatures?.[role.id] && <button onClick={(e) => { e.stopPropagation(); onClearSignature(role.id); }} className="text-red-400 p-1 no-print"><X size={14}/></button>}
                   </div>
                   {data.signatures?.[role.id] ? (
                     <div className="flex flex-col items-center">
@@ -111,7 +124,7 @@ export default function AgreementView({
           </div>
 
           {!currentWOId && !isShared && (
-            <button onClick={onCreate} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform"><FileSignature size={20}/> 建立工令並存檔</button>
+            <button onClick={onCreate} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 active:scale-95 transition-transform no-print"><FileSignature size={20}/> 建立工令並存檔</button>
           )}
         </div>
       </div>

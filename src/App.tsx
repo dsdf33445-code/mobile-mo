@@ -15,10 +15,9 @@ import {
   type QuerySnapshot, 
   type DocumentSnapshot 
 } from 'firebase/firestore';
-// 修正：移除未使用的 Maximize, Link
 import { 
   FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, LogOut, Loader2, User as UserIcon, 
-  GitMerge, CheckSquare, Square 
+  GitMerge, CheckSquare, Square, Maximize, Link, Send 
 } from 'lucide-react';
 
 import { auth, db, provider } from './firebase';
@@ -31,7 +30,8 @@ import BottomNavigation from './components/BottomNavigation';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'agreement' | 'wo' | 'mo'>('agreement');
+  // 1. 修改：預設進入工令管理
+  const [activeTab, setActiveTab] = useState<'agreement' | 'wo' | 'mo'>('wo');
   const [isSigningMode, setIsSigningMode] = useState(false);
   
   // Data
@@ -48,6 +48,9 @@ export default function App() {
   const [woModal, setWoModal] = useState<any>({ isOpen: false, data: null });
   const [itemModal, setItemModal] = useState<any>({ isOpen: false, data: null });
   const [mergeModal, setMergeModal] = useState<any>({ isOpen: false, selectedIds: [] });
+  // 新增：轉交對象輸入框 (簡單版)
+  const [transferModal, setTransferModal] = useState<any>({ isOpen: false, targetEmail: '' });
+  
   const [signingRole, setSigningRole] = useState<any>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
@@ -60,7 +63,14 @@ export default function App() {
   useEffect(() => {
     const initAuth = async () => { setLoading(true); };
     initAuth();
-    const unsub = onAuthStateChanged(auth, u => { setUser(u); setLoading(false); });
+    const unsub = onAuthStateChanged(auth, u => { 
+        setUser(u); 
+        setLoading(false); 
+        // 登入後若無分享ID，預設停留在工令管理
+        if(u && !new URLSearchParams(window.location.search).get('shareId')) {
+            setActiveTab('wo');
+        }
+    });
     
     const params = new URLSearchParams(window.location.search);
     const shareId = params.get('shareId');
@@ -122,24 +132,30 @@ export default function App() {
        unsubAgree = onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => {
          if(s.exists()) setDraftAgreement(s.data());
          else if (!sharedOwnerId) {
-           // 3. 點擊新增工令時，要顯示空白協議書
-           setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
+           // 若無協議書資料，使用工令資料預填
+           const wo = workOrders.find(w => w.id === currentWOId);
+           setDraftAgreement({ 
+               woNo: wo?.no || '', 
+               woName: wo?.name || '', 
+               contractor: '', 
+               durationOption: '1', 
+               safetyChecks: [], 
+               signatures: {} 
+           });
          }
        });
     } else {
         if(!sharedOwnerId) setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
     }
     return () => { unsubWO(); unsubItems(); unsubAgree(); };
-  }, [user, currentWOId, sharedOwnerId, currentWorkOrder]);
+  }, [user, currentWOId, sharedOwnerId, currentWorkOrder]); // Removed workOrders from deps to avoid loop, currentWorkOrder is enough
 
   // --- Handlers ---
   const handleLogin = async () => { try { setLoading(true); await signInWithPopup(auth, provider); } catch(e) { setDialog({isOpen:true, type:'error', message:'登入失敗'}); setLoading(false); } };
   const handleLogout = () => signOut(auth);
   
   const handleUpdateAgreement = (field: string, value: any) => {
-    // 工令編號限制：8碼、大寫、英數字
     if (field === 'woNo') value = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-    
     const newState = { ...draftAgreement, [field]: value };
     setDraftAgreement(newState);
     if(user && currentWOId && !sharedOwnerId) setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid, 'agreements', currentWOId), newState, {merge:true});
@@ -169,15 +185,8 @@ export default function App() {
     setSigningRole(null);
   };
 
-  const handleShare = async () => {
-    if (!currentWOId || !user) return;
-    const url = `${window.location.origin}?shareId=${currentWOId}&ownerId=${user.uid}`;
-    const text = `【開工協議書連結】\n工令：${draftAgreement.woNo}\n請點擊連結進行簽署：\n${url}`;
-    if (navigator.share) navigator.share({ title: '簽署通知', text, url }).catch(()=>{});
-    else { navigator.clipboard.writeText(text); setDialog({isOpen:true, type:'alert', message:'已複製連結'}); }
-  };
-
   const handleCreateWO = async () => {
+    // 此函式保留給 "協議書 -> 建立工令" 的舊流程，但在新流程中較少用到
     if(!draftAgreement.woNo || !draftAgreement.woName || !draftAgreement.contractor) return setDialog({isOpen:true, type:'error', message:'請填寫完整'});
     if(!user) return;
     const id = doc(collection(db, 'dummy')).id;
@@ -187,15 +196,34 @@ export default function App() {
     setCurrentWOId(id); setActiveTab('wo'); setDialog({isOpen:true, type:'alert', message:'建立成功'});
   };
 
+  // 2. 新增/編輯工令：包含工令編號與名稱，儲存後跳轉
   const handleSaveWO = async () => {
     if(!woModal.data.no || !woModal.data.name) return;
     if(woModal.data.status==='MO' && (!woModal.data.subNo || woModal.data.subNo.length<2)) return setDialog({isOpen:true, type:'error', message:'MO 狀態需填寫分工令'});
-    const id = woModal.data.id;
-    await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { ...woModal.data, updatedAt: serverTimestamp() }, {merge:true});
-    // 同步更新協議書的工令編號與名稱
-    await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), { woNo: woModal.data.no, woName: woModal.data.name }, {merge: true});
+    
+    const isNew = !woModal.data.id;
+    const id = woModal.data.id || doc(collection(db, 'dummy')).id; // 若是新增則產生新ID
+    
+    // 儲存工令
+    await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { 
+      ...woModal.data, 
+      id: id, // 確保 ID 寫入
+      updatedAt: serverTimestamp(),
+      createdAt: woModal.data.createdAt || serverTimestamp()
+    }, {merge:true});
+
+    // 同步更新協議書
+    await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), {
+      woNo: woModal.data.no,
+      woName: woModal.data.name
+    }, {merge: true});
+
     setWoModal({isOpen:false, data:null});
-    if(!currentWOId) setCurrentWOId(id);
+    
+    // 儲存後自動選取並跳轉到協議書
+    setCurrentWOId(id);
+    setActiveTab('agreement'); 
+    setDialog({isOpen:true, type:'success', message: isNew ? '工令建立成功！請繼續填寫協議書' : '工令更新成功'});
   };
 
   const handleSaveItem = async () => {
@@ -236,6 +264,13 @@ export default function App() {
     }
   };
 
+  // 4. 轉交協議書 (模擬)
+  const handleTransfer = async () => {
+     // 實際應用需實作搜尋 User ID 邏輯，這裡簡化為提示
+     setDialog({isOpen:true, type:'success', message: `已將協議書轉交給：${transferModal.targetEmail} (模擬)`});
+     setTransferModal({isOpen:false, targetEmail:''});
+  };
+
   const handleDelete = (col: string, id: string) => {
     setDialog({isOpen:true, type:'confirm', message:'確定刪除？', onConfirm: async () => {
       await deleteDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, col, id));
@@ -245,12 +280,19 @@ export default function App() {
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-blue-600"><Loader2 className="animate-spin" size={48}/></div>;
+  
+  // 1. 登入畫面優化
   if (!user && !sharedOwnerId) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-blue-600 p-6">
-      <div className="bg-white p-8 rounded-3xl w-full max-w-sm text-center shadow-2xl">
-        <FileSpreadsheet size={40} className="mx-auto mb-6 text-blue-600"/>
-        <h1 className="text-2xl font-bold mb-2">行動版 MO</h1>
-        <button onClick={handleLogin} className="w-full py-4 bg-gray-900 text-white rounded-xl font-bold mt-6 flex justify-center gap-2"><UserIcon/> Google 登入</button>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 p-6">
+      <div className="bg-white p-8 rounded-3xl w-full max-w-sm text-center shadow-2xl animate-in zoom-in-95 duration-500">
+        <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-600 shadow-inner">
+           <FileSpreadsheet size={40}/>
+        </div>
+        <h1 className="text-3xl font-extrabold mb-2 text-slate-800 tracking-tight">行動版 MO</h1>
+        <p className="text-slate-500 mb-8 font-medium">中鋼風格 • 雲端同步 • 專業工令</p>
+        <button onClick={handleLogin} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg flex justify-center items-center gap-3 hover:bg-black active:scale-95 transition-all shadow-xl shadow-slate-900/30">
+           <UserIcon size={20}/> 使用 Google 登入
+        </button>
       </div>
     </div>
   );
@@ -262,6 +304,13 @@ export default function App() {
           <div className="flex items-center gap-2 font-bold text-lg text-slate-800"><FileSpreadsheet size={18}/> 行動版 MO</div>
           <div className="flex items-center gap-2">
             {sharedOwnerId && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">訪客</span>}
+            {/* 1. 顯示使用者名稱 */}
+            {user && (
+                <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full">
+                    {user.photoURL ? <img src={user.photoURL} alt="user" className="w-5 h-5 rounded-full" /> : <UserIcon size={14} />}
+                    <span className="text-xs font-bold text-slate-700">{user.displayName || user.email?.split('@')[0]}</span>
+                </div>
+            )}
             {user && <button onClick={handleLogout}><LogOut size={18} className="text-slate-400"/></button>}
           </div>
         </header>
@@ -280,7 +329,11 @@ export default function App() {
             data={draftAgreement} currentWOId={currentWOId} isSigningMode={isSigningMode} isShared={!!sharedOwnerId}
             onChange={handleUpdateAgreement} onToggleSafety={handleToggleSafety}
             onSigning={setSigningRole} onClearSignature={(rid:string) => handleUpdateAgreement('signatures', {...draftAgreement.signatures, [rid]: null})}
-            onDateChange={handleSignatureDateChange} onCreate={handleCreateWO} onShare={handleShare} onExitSigning={setIsSigningMode}
+            onDateChange={handleSignatureDateChange} 
+            onCreate={handleCreateWO} 
+            // 傳入轉交功能
+            onTransfer={() => setTransferModal({isOpen:true, targetEmail:''})}
+            onExitSigning={setIsSigningMode}
           />
         )}
         {activeTab === 'wo' && (
@@ -289,12 +342,8 @@ export default function App() {
             onSelect={(wo:any) => { setCurrentWOId(wo.id); setActiveTab('mo'); }}
             onEdit={(wo:any) => { setWoModal({isOpen:true, data:wo}); }}
             onDelete={(id:string) => handleDelete('workOrders', id)}
-            onAdd={() => { 
-                setCurrentWOId(null); 
-                // 3. 確保點擊新增工令時，草稿被清空
-                setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} }); 
-                setActiveTab('agreement'); 
-            }}
+            // 2. 點擊新增按鈕：開啟 Modal 填寫資料
+            onAdd={() => { setWoModal({isOpen:true, data:{no:'', name:'', status:'接收工令'}}); }}
             onCheckAgreement={(id:string) => { setCurrentWOId(id); setActiveTab('agreement'); }}
           />
         )}
@@ -305,7 +354,6 @@ export default function App() {
             onAddClick={() => { setItemModal({isOpen:true, data:{no:'', name:'', qty:'', price:0}}); setShowSuggestions(false); }}
             onReloadDb={fetchProducts}
             onMergeClick={() => setMergeModal({ isOpen: true, selectedIds: [] })}
-            // 修正：不傳遞 unused prop
           />
         )}
       </main>
@@ -314,21 +362,33 @@ export default function App() {
 
       {signingRole && <SignaturePad title={signingRole.label} onSave={handleSignatureSave} onClose={() => setSigningRole(null)} />}
       
-      {/* 3. 編輯工令 Modal (更新) */}
       {woModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
-              <h3 className="font-bold text-lg mb-4">編輯工令</h3>
+              <h3 className="font-bold text-lg mb-4">{woModal.data.id ? '編輯工令' : '新增工令'}</h3>
               <div className="space-y-4">
                  <div>
                     <label className="text-xs font-bold text-gray-500 block mb-1">工令編號</label>
-                    {/* 1. 編輯工令：編號限制8碼、自動大寫 */}
-                    <input type="text" maxLength={8} value={woModal.data.no} onChange={e => setWoModal({...woModal, data:{...woModal.data, no:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold font-mono" />
+                    <input type="text" maxLength={8} value={woModal.data.no} onChange={e => setWoModal({...woModal, data:{...woModal.data, no:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold font-mono" placeholder="請輸入8碼工令編號" />
                  </div>
-                 <div><label className="text-xs font-bold text-gray-500 block mb-1">工程名稱</label><input type="text" value={woModal.data.name} onChange={e => setWoModal({...woModal, data:{...woModal.data, name:e.target.value}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold" /></div>
+                 <div><label className="text-xs font-bold text-gray-500 block mb-1">工程名稱</label><input type="text" value={woModal.data.name} onChange={e => setWoModal({...woModal, data:{...woModal.data, name:e.target.value}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold" placeholder="請輸入工程名稱" /></div>
                  <div><label className="text-xs font-bold text-gray-500 block mb-1">狀態</label><select value={woModal.data.status} onChange={e => setWoModal({...woModal, data:{...woModal.data, status:e.target.value}})} className="w-full border p-3 rounded-xl"><option>接收工令</option><option>MO</option><option>已完工</option><option>已結案</option></select></div>
                  {woModal.data.status==='MO' && <div><label className="text-xs text-blue-500 font-bold block mb-1">分工令 (必填)</label><input type="text" maxLength={2} value={woModal.data.subNo||''} onChange={e => setWoModal({...woModal, data:{...woModal.data, subNo:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'')}})} className="w-full border-2 border-blue-200 p-3 rounded-xl font-mono font-bold text-center text-xl" /></div>}
                  <div className="flex gap-2 pt-2"><button onClick={() => setWoModal({isOpen:false})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button><button onClick={handleSaveWO} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg">儲存</button></div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* 4. 轉交視窗 */}
+      {transferModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+           <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Send size={20}/> 轉交協議書</h3>
+              <p className="text-xs text-gray-500 mb-4">輸入對方的 Email 或名稱以轉交整份文件。</p>
+              <div className="space-y-4">
+                 <input type="text" value={transferModal.targetEmail} onChange={e => setTransferModal({...transferModal, targetEmail:e.target.value})} className="w-full bg-slate-50 border p-3 rounded-xl" placeholder="輸入 Email..." />
+                 <div className="flex gap-2 pt-2"><button onClick={() => setTransferModal({isOpen:false})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button><button onClick={handleTransfer} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg">確認轉交</button></div>
               </div>
            </div>
         </div>
@@ -407,6 +467,12 @@ export default function App() {
       <style>{`
         input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
         .no-arrow { -moz-appearance: textfield; }
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white; }
+            .shadow-xl, .shadow-lg { box-shadow: none !important; }
+        }
         @supports (padding-bottom: env(safe-area-inset-bottom)) { .safe-area-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + 1rem); } }
         @supports (padding-top: env(safe-area-inset-top)) { .safe-area-top { padding-top: calc(env(safe-area-inset-top) + 0.5rem); } }
       `}</style>
