@@ -295,18 +295,18 @@ export default function App() {
         if (!retry.ok) throw new Error("找不到資料庫檔案 (404)");
       }
 
-      // 取得原始二進位資料 (ArrayBuffer)，以便處理 Big5 編碼
+      // 取得原始二進位資料
       const buffer = await response.arrayBuffer();
       let text = '';
       
-      // 嘗試用 UTF-8 解碼
+      // 1. 先嘗試用 UTF-8 解碼
       const decoderUtf8 = new TextDecoder('utf-8');
       text = decoderUtf8.decode(buffer);
 
-      // 檢查是否含有亂碼 (簡單判斷: 是否包含常見的亂碼符號或完全讀不到 '編號' 關鍵字)
-      // 如果 CSV 是 Big5，UTF-8 解碼後通常看不到中文字
-      if (!text.includes('編號') && !text.includes('名稱') && !text.includes('Y6')) {
-        console.log("偵測到可能的編碼問題，嘗試使用 Big5 解碼...");
+      // 2. 判斷是否為亂碼 (修正邏輯：只要讀不到「編號」或「名稱」就視為亂碼)
+      // 注意：我們移除對 'Y6' 的檢查，因為它是英文，在 Big5 也是正常的，會導致誤判
+      if (!text.includes('編號') && !text.includes('名稱')) {
+        console.log("偵測到可能的編碼問題 (Big5)，嘗試重新解碼...");
         try {
           const decoderBig5 = new TextDecoder('big5');
           text = decoderBig5.decode(buffer);
@@ -333,10 +333,9 @@ export default function App() {
         if (parts.length >= 3) {
           const no = parts[0].trim().replace(/^\uFEFF/, '');
           
-          // 處理名稱中可能含有逗號的情況：取中間所有部分當作名稱
-          // 例如: A01, "鋼管, 鍍鋅", 100
+          // 處理名稱中可能含有逗號的情況
           const nameParts = parts.slice(1, parts.length - 1);
-          const name = nameParts.join(',').trim().replace(/^"|"$/g, ''); // 移除前後引號
+          const name = nameParts.join(',').trim().replace(/^"|"$/g, '');
           
           const priceStr = parts[parts.length - 1].trim().replace(/["\s,]/g, '');
           const price = parseFloat(priceStr) || 0;
@@ -351,7 +350,7 @@ export default function App() {
       setProducts(newProducts);
       
       if (newProducts.length === 0) {
-         showAlert("讀取到檔案但內容為空，請檢查 CSV 編碼 (建議使用 UTF-8)", "error");
+         showAlert("讀取到檔案但內容為空，請檢查 CSV 編碼", "error");
       }
 
     } catch (e: any) {
@@ -510,7 +509,7 @@ export default function App() {
             try { text = new TextDecoder('utf-8').decode(buffer); } catch(e) {}
             
             // 偵測是否為 Big5
-            if (!text.includes('編號') && !text.includes('Y6')) {
+            if (!text.includes('編號') && !text.includes('名稱')) {
                 try { text = new TextDecoder('big5').decode(buffer); } catch(e) {}
             }
 
@@ -546,7 +545,7 @@ export default function App() {
         <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-sm text-center animate-in zoom-in-95 duration-300">
           <div className="w-20 h-20 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-600"><FileSpreadsheet size={40} /></div>
           <h1 className="text-2xl font-bold text-gray-800 mb-2">行動版 MO</h1>
-          <p className="text-gray-500 mb-8">中鋼藍風格 • 雲端同步 • 專業工令</p>
+          <p className="text-gray-500 mb-8">Y642 工令管理系統</p>
           <button onClick={handleLogin} disabled={loading} className={`w-full py-4 bg-gray-900 text-white rounded-xl font-bold flex items-center justify-center gap-3 hover:bg-black transition-transform active:scale-95 shadow-xl shadow-gray-400/50 ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}>
             {loading ? <Loader2 className="animate-spin" size={20} /> : <UserIcon size={20} />}
             使用 Google 帳號登入
