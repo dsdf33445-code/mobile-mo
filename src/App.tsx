@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { signInWithPopup, signOut, onAuthStateChanged, type User } from 'firebase/auth';
+// 修正：移除未使用的 collection, orderBy，保留 query, where (如果未來擴充需要)
 import { collection, doc, setDoc, getDoc, deleteDoc, onSnapshot, query, serverTimestamp, orderBy } from 'firebase/firestore';
-// 修正：只引入 App.tsx 真正用到的圖示
-import { FileSpreadsheet, X, AlertTriangle, CheckCircle2, Search, PenTool, LogOut, Loader2, User as UserIcon } from 'lucide-react';
+// 修正：移除未使用的圖標 (X, PenTool, FileSpreadsheet 等已移至子元件)
+import { LogOut, Loader2, User as UserIcon } from 'lucide-react';
 
 // 引入拆分後的檔案
 import { auth, db, provider } from './firebase';
@@ -44,7 +45,7 @@ export default function App() {
   useEffect(() => {
     const initAuth = async () => {
         setLoading(true);
-        // ...Auth logic
+        // ...Auth logic is handled by onAuthStateChanged
     };
     initAuth();
     
@@ -206,7 +207,7 @@ export default function App() {
     <div className="min-h-screen bg-slate-50 text-slate-800 font-[Microsoft JhengHei] pb-24 safe-area-bottom">
       {!isSigningMode && (
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b p-4 flex justify-between safe-area-top">
-          <div className="flex items-center gap-2 font-bold text-lg text-slate-800"><FileSpreadsheet/> 行動版 MO</div>
+          <div className="flex items-center gap-2 font-bold text-lg text-slate-800"><FileSpreadsheet size={18}/> 行動版 MO</div>
           <div className="flex items-center gap-2">
             {sharedOwnerId && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">訪客</span>}
             {user && <button onClick={handleLogout}><LogOut size={18} className="text-slate-400"/></button>}
@@ -216,7 +217,7 @@ export default function App() {
 
       {isSigningMode && (
         <div className="sticky top-0 z-40 bg-slate-900 text-white p-4 flex justify-between safe-area-top shadow-lg">
-           <span className="font-bold flex gap-2"><PenTool/> 現場簽署</span>
+           <span className="font-bold flex gap-2"><PenTool size={18}/> 現場簽署</span>
            <button onClick={() => setIsSigningMode(false)} className="bg-slate-700 px-3 py-1 rounded text-xs">退出</button>
         </div>
       )}
@@ -273,7 +274,7 @@ export default function App() {
       {itemModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-xl animate-in slide-in-from-bottom-10">
-              <div className="flex justify-between mb-4"><h3 className="font-bold">新增項目</h3><button onClick={() => setItemModal({isOpen:false})}><X/></button></div>
+              <div className="flex justify-between mb-4"><h3 className="font-bold">新增項目</h3><button onClick={() => setItemModal({isOpen:false})}><X size={20}/></button></div>
               <div className="space-y-3">
                  <div className="relative">
                     <input type="text" value={itemModal.data.no} onChange={e => { const v=e.target.value.toUpperCase(); setItemModal({...itemModal, data:{...itemModal.data, no:v}}); if(v) { setFilteredProducts(products.filter(p=>p.no.includes(v)||p.name.includes(v))); setShowSuggestions(true); } else setShowSuggestions(false); }} className="w-full border p-3 rounded-xl font-mono" placeholder="搜尋編號..." />
@@ -293,7 +294,7 @@ export default function App() {
       {dialog.isOpen && (
          <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-xs rounded-3xl p-6 text-center shadow-xl animate-in zoom-in-95">
-               <div className={`w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center ${dialog.type==='error'?'bg-red-100 text-red-600':'bg-blue-100 text-blue-600'}`}>{dialog.type==='error'?<AlertTriangle/>:<CheckCircle2/>}</div>
+               <div className={`w-12 h-12 mx-auto mb-4 rounded-full flex items-center justify-center ${dialog.type==='error'?'bg-red-100 text-red-600':'bg-blue-100 text-blue-600'}`}>{dialog.type==='error'?<AlertTriangle size={28}/>:<CheckCircle2 size={28}/>}</div>
                <p className="font-bold text-slate-700 mb-6">{dialog.message}</p>
                <div className="flex gap-2">
                   {dialog.type==='confirm' && <button onClick={() => setDialog({isOpen:false})} className="flex-1 py-2 border rounded-xl">取消</button>}
