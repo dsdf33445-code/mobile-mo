@@ -27,7 +27,7 @@ import {
   PenTool, ChevronDown, ChevronUp, Eraser, 
   Maximize, LogOut, Loader2,
   FileText, ClipboardList, User as UserIcon, 
-  RefreshCw, LayoutList, Share2, FileSignature // 修正：補上 Share2, FileSignature, RefreshCw
+  RefreshCw, LayoutList, Share2, FileSignature 
 } from 'lucide-react';
 
 // ------------------------------------------------------------------
@@ -286,30 +286,56 @@ export default function App() {
   const fetchProducts = async () => {
     setDbLoading(true);
     try {
-      const response = await fetch('/products.csv');
-      if (!response.ok) throw new Error("找不到資料庫檔案");
+      // 1. 加入時間戳記避免快取
+      const response = await fetch(`/products.csv?t=${Date.now()}`);
+      
+      if (!response.ok) {
+        console.error(`Fetch error: ${response.status} ${response.statusText}`);
+        // 若失敗，嘗試讀取不帶參數的 (某些 server 設定)
+        const retry = await fetch('/products.csv');
+        if (!retry.ok) throw new Error("找不到資料庫檔案，請確認 public/products.csv 是否存在");
+      }
+
       const text = await response.text();
-      const lines = text.split('\n');
+      console.log("CSV 檔案大小:", text.length);
+
+      // 2. 更強大的換行處理 (CRLF 或 LF)
+      const lines = text.split(/\r\n|\n/);
       const newProducts: any[] = [];
-      const startIndex = lines[0]?.includes('編號') ? 1 : 0;
+      
+      // 3. 自動偵測標題列 (檢查是否包含 '編號')
+      let startIndex = 0;
+      if (lines[0] && (lines[0].includes('編號') || lines[0].includes('no'))) {
+        startIndex = 1;
+      }
 
       for (let i = startIndex; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
+        
+        // 簡單分割，若有更複雜的 CSV (如引號內有逗號)，需改用 regex 或 library
         const parts = line.split(',');
+        
+        // 至少要有 3 個欄位 (編號, 名稱, 單價)
         if (parts.length >= 3) {
-          const no = parts[0].trim().replace(/^\uFEFF/, '');
+          const no = parts[0].trim().replace(/^\uFEFF/, ''); // 去除 BOM
           const name = parts[1].trim();
-          const price = parseFloat(parts[2].trim()) || 0;
+          // 取最後一個欄位當作價格，並去除可能存在的引號或空白
+          const priceStr = parts[parts.length - 1].trim().replace(/["\s,]/g, '');
+          const price = parseFloat(priceStr) || 0;
+          
           if(no && name) {
              newProducts.push({ no, name, price });
           }
         }
       }
+      
+      console.log(`成功解析 ${newProducts.length} 筆資料`);
       setProducts(newProducts);
-      console.log(`已載入 ${newProducts.length} 筆產品資料`);
+      
     } catch (e) {
       console.error("載入產品資料庫失敗:", e);
+      showAlert("無法自動載入產品資料庫，請檢查檔案是否存在或格式是否正確", "error");
     } finally {
       setDbLoading(false);
     }
@@ -344,7 +370,6 @@ export default function App() {
     setDialog({ isOpen: true, type: 'confirm', message, onConfirm });
   };
 
-  // 修正：補回 handleShare 函式
   const handleShare = async () => {
     if (!draftAgreement.woNo) {
       showAlert("請先選擇或建立工令", 'error');
@@ -457,9 +482,9 @@ export default function App() {
     reader.onload = (evt) => {
         const text = evt.target?.result as string;
         if(text) {
-            const lines = text.split('\n');
+            const lines = text.split(/\r\n|\n/);
             const newProducts: any[] = [];
-            const startIndex = lines[0]?.includes('編號') ? 1 : 0;
+            const startIndex = (lines[0]?.includes('編號') || lines[0]?.includes('no')) ? 1 : 0;
             for (let i = startIndex; i < lines.length; i++) {
                 const line = lines[i].trim();
                 if (!line) continue;
@@ -468,7 +493,7 @@ export default function App() {
                     newProducts.push({
                         no: parts[0].trim().replace(/^\uFEFF/, ''),
                         name: parts[1].trim(),
-                        price: parseFloat(parts[2].trim()) || 0
+                        price: parseFloat(parts[parts.length - 1].trim()) || 0
                     });
                 }
             }
@@ -501,7 +526,6 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-[Microsoft JhengHei] pb-24 safe-area-bottom">
       
-      {/* 頂部 Header - 只放 Logo 與登出 */}
       {!isSigningMode && (
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 safe-area-top">
           <div className="flex justify-between items-center p-4">
@@ -517,7 +541,6 @@ export default function App() {
         </header>
       )}
 
-      {/* 全螢幕簽署模式 Header */}
       {isSigningMode && (
         <div className="sticky top-0 z-40 bg-slate-900 text-white p-4 flex justify-between items-center shadow-lg safe-area-top">
            <span className="font-bold flex items-center gap-2"><PenTool size={18}/> 現場簽署模式</span>
@@ -526,8 +549,7 @@ export default function App() {
       )}
 
       <main className={`p-4 max-w-2xl mx-auto w-full transition-all duration-300 ${isSigningMode ? 'bg-white min-h-screen' : 'mb-20'}`}>
-        
-        {/* Tab 1: 協議書 */}
+        {/* ... Tab contents ... */}
         {activeTab === 'agreement' && (
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
              {!isSigningMode && !currentWOId && (
@@ -539,7 +561,7 @@ export default function App() {
                  <div className="bg-white/20 p-2 rounded-xl"><FileText size={24} /></div>
                </div>
              )}
-             
+             {/* ... Agreement Content ... */}
              {currentWorkOrder && !isSigningMode && (
                <div className="bg-blue-50 border border-blue-100 p-3 rounded-2xl flex justify-between items-center">
                  <div className="flex items-center gap-2">
@@ -552,20 +574,13 @@ export default function App() {
                  </div>
                </div>
              )}
-
+             {/* Agreement Form */}
              <div className={`bg-white rounded-3xl ${isSigningMode ? '' : 'shadow-sm border border-slate-100'} overflow-hidden`}>
                 {!isSigningMode && <div className="bg-slate-50 p-4 border-b border-slate-100 text-center text-slate-500 font-bold text-sm">工程委辦及開工工安協議書</div>}
-                
                 <div className="p-5 space-y-6">
                    <div className="grid gap-4">
-                     <div>
-                       <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">工令編號</label>
-                       <input type="text" value={draftAgreement.woNo || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, woNo: e.target.value.toUpperCase()})} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="輸入編號..." />
-                     </div>
-                     <div>
-                       <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">工程名稱</label>
-                       <input type="text" value={draftAgreement.woName || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, woName: e.target.value})} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="輸入名稱..." />
-                     </div>
+                     <div><label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">工令編號</label><input type="text" value={draftAgreement.woNo || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, woNo: e.target.value.toUpperCase()})} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="輸入編號..." /></div>
+                     <div><label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">工程名稱</label><input type="text" value={draftAgreement.woName || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, woName: e.target.value})} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="輸入名稱..." /></div>
                      <div>
                        <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">承包廠商</label>
                        <div className="relative">
@@ -577,68 +592,26 @@ export default function App() {
                        </div>
                      </div>
                    </div>
-
                    <hr className="border-slate-100"/>
-
-                   {/* --- 工程期限 --- */}
+                   {/* Duration */}
                    <div>
                       <h4 className="font-bold text-slate-800 mb-3 text-sm">工程期限</h4>
                       <div className="space-y-3">
                         <label className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${draftAgreement.durationOption === '1' ? 'border-blue-500 bg-blue-50/50' : 'border-transparent bg-slate-50'}`}>
                            <input type="radio" checked={draftAgreement.durationOption === '1'} disabled={!!currentWOId} onChange={() => setDraftAgreement({...draftAgreement, durationOption: '1'})} className="mt-1 w-4 h-4 text-blue-600" />
-                           <div className="text-sm text-slate-600 leading-relaxed">
-                              本工程施工期限為 
-                              <input type="number" 
-                                value={draftAgreement.durationDays || ''}
-                                readOnly={!!currentWOId}
-                                onChange={e => setDraftAgreement({...draftAgreement, durationDays: e.target.value})}
-                                onClick={e => e.stopPropagation()}
-                                className="w-10 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1 no-arrow"
-                              />
-                              工作天，需配合
-                              <input type="text" 
-                                value={draftAgreement.durationCoop || ''}
-                                readOnly={!!currentWOId}
-                                onChange={e => setDraftAgreement({...draftAgreement, durationCoop: e.target.value})}
-                                onClick={e => e.stopPropagation()}
-                                className="w-16 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1"
-                              />
-                              施工。
-                           </div>
+                           <div className="text-sm text-slate-600 leading-relaxed">本工程施工期限為 <input type="number" value={draftAgreement.durationDays || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, durationDays: e.target.value})} onClick={e => e.stopPropagation()} className="w-10 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1 no-arrow"/> 工作天，需配合 <input type="text" value={draftAgreement.durationCoop || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, durationCoop: e.target.value})} onClick={e => e.stopPropagation()} className="w-16 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1"/> 施工。</div>
                         </label>
                         <label className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${draftAgreement.durationOption === '2' ? 'border-blue-500 bg-blue-50/50' : 'border-transparent bg-slate-50'}`}>
                            <input type="radio" checked={draftAgreement.durationOption === '2'} disabled={!!currentWOId} onChange={() => setDraftAgreement({...draftAgreement, durationOption: '2'})} className="mt-1 w-4 h-4 text-blue-600" />
-                           <div className="text-sm text-slate-600 leading-relaxed">
-                              需配合施工，其施工期限為配合工程完成後於 
-                              <input type="number" 
-                                value={draftAgreement.durationCalendarDays || ''}
-                                readOnly={!!currentWOId}
-                                onChange={e => setDraftAgreement({...draftAgreement, durationCalendarDays: e.target.value})}
-                                onClick={e => e.stopPropagation()}
-                                className="w-10 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1 no-arrow"
-                              />
-                              日曆天內完成。
-                           </div>
+                           <div className="text-sm text-slate-600 leading-relaxed">需配合施工，其施工期限為配合工程完成後於 <input type="number" value={draftAgreement.durationCalendarDays || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, durationCalendarDays: e.target.value})} onClick={e => e.stopPropagation()} className="w-10 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1 no-arrow"/> 日曆天內完成。</div>
                         </label>
                         <label className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${draftAgreement.durationOption === '3' ? 'border-blue-500 bg-blue-50/50' : 'border-transparent bg-slate-50'}`}>
                            <input type="radio" checked={draftAgreement.durationOption === '3'} disabled={!!currentWOId} onChange={() => setDraftAgreement({...draftAgreement, durationOption: '3'})} className="mt-1 w-4 h-4 text-blue-600" />
-                           <div className="text-sm text-slate-600 leading-relaxed">
-                              本工程施工期限於 
-                              <input type="date" 
-                                value={draftAgreement.durationDate || ''}
-                                readOnly={!!currentWOId}
-                                onChange={e => setDraftAgreement({...draftAgreement, durationDate: e.target.value})}
-                                onClick={e => e.stopPropagation()}
-                                className="border rounded px-1 bg-white text-xs ml-1"
-                              />
-                              完成。
-                           </div>
+                           <div className="text-sm text-slate-600 leading-relaxed">本工程施工期限於 <input type="date" value={draftAgreement.durationDate || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, durationDate: e.target.value})} onClick={e => e.stopPropagation()} className="border rounded px-1 bg-white text-xs ml-1"/> 完成。</div>
                         </label>
                       </div>
                    </div>
-
                    <hr className="border-slate-100"/>
-
                    {/* Safety Checks */}
                    <div className="rounded-2xl border border-slate-100 overflow-hidden">
                       <button onClick={() => setIsSafetyExpanded(!isSafetyExpanded)} className="w-full flex justify-between items-center p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
@@ -656,7 +629,6 @@ export default function App() {
                         </div>
                       )}
                    </div>
-
                    {/* Signatures */}
                    <div>
                       <h4 className="font-bold text-slate-800 mb-3 text-sm">簽名確認</h4>
@@ -676,7 +648,6 @@ export default function App() {
                          ))}
                       </div>
                    </div>
-
                    {!currentWOId && (
                      <button onClick={handleCreateWOFromAgreement} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">
                        <FileSignature size={20} /> 建立工令並存檔
@@ -850,7 +821,7 @@ export default function App() {
                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600"><Database size={32}/></div>
                <h3 className="font-bold text-xl mb-2 text-slate-800">產品資料庫</h3>
                <p className="text-slate-400 text-sm mb-6">目前共有 {products.length} 筆資料</p>
-               <label className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 cursor-pointer hover:bg-blue-700 active:scale-95 transition-transform mb-3"><Upload size={20} /> 匯入 Excel 檔案<input type="file" accept=".xlsx" className="hidden" onChange={handleExcelImport} /></label>
+               <label className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 cursor-pointer hover:bg-blue-700 active:scale-95 transition-transform mb-3"><Upload size={20} /> 匯入 Excel 檔案<input type="file" accept=".csv" className="hidden" onChange={handleExcelImport} /></label>
                
                {/* 修正：加入重新載入按鈕 */}
                <div className="flex gap-2 mt-2">
