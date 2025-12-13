@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -24,15 +24,15 @@ import {
   Plus, Edit2, Trash2, X, FileSpreadsheet, 
   ArrowRight, AlertTriangle, CheckCircle2, Search, 
   Database, Upload, 
-  PenTool, ChevronDown, ChevronUp, Eraser, FileSignature, 
-  Share2, Maximize, Minimize, LogOut, Loader2,
-  FileText, ClipboardList, User as UserIcon, RefreshCw
+  PenTool, ChevronDown, ChevronUp, Eraser, 
+  Maximize, LogOut, Loader2,
+  FileText, ClipboardList, User as UserIcon, RefreshCw,
+  LayoutList
 } from 'lucide-react';
 
 // ------------------------------------------------------------------
 // 1. Firebase 設定與初始化
 // ------------------------------------------------------------------
-// --- 1. Firebase Config ---
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -43,11 +43,8 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-const app = initializeApp(firebaseConfig.apiKey === "YOUR_API_KEY_HERE" && typeof window !== 'undefined' && (window as any).__firebase_config 
-  ? JSON.parse((window as any).__firebase_config) 
-  : firebaseConfig
-);
-
+// 防止重複初始化
+const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 const provider = new GoogleAuthProvider();
@@ -91,10 +88,10 @@ const SIGNATURE_ROLES = [
 // 3. 元件：簽名板 (SignaturePad)
 // ------------------------------------------------------------------
 const SignaturePad = ({ title, onSave, onClose }: { title: string, onSave: (data: string) => void, onClose: () => void }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
-  const [ctx, setCtx] = useState<CanvasRenderingContext2D | null>(null);
+  const canvasRef = useMemo(() => ({ current: null as HTMLCanvasElement | null }), []);
+  const containerRef = useMemo(() => ({ current: null as HTMLDivElement | null }), []);
+  const ctxRef = useMemo(() => ({ current: null as CanvasRenderingContext2D | null }), []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -113,7 +110,7 @@ const SignaturePad = ({ title, onSave, onClose }: { title: string, onSave: (data
           context.lineCap = 'round';
           context.lineJoin = 'round';
           context.strokeStyle = '#1e3a8a';
-          setCtx(context);
+          ctxRef.current = context;
         }
       }
     };
@@ -127,7 +124,7 @@ const SignaturePad = ({ title, onSave, onClose }: { title: string, onSave: (data
       resizeObserver.disconnect();
       document.body.style.overflow = 'unset';
     };
-  }, []);
+  }, [canvasRef, containerRef, ctxRef]);
 
   const getPos = (e: any) => {
     const canvas = canvasRef.current;
@@ -141,20 +138,20 @@ const SignaturePad = ({ title, onSave, onClose }: { title: string, onSave: (data
   const startDrawing = (e: any) => {
     setIsDrawing(true);
     const { x, y } = getPos(e);
-    ctx?.beginPath();
-    ctx?.moveTo(x, y);
+    ctxRef.current?.beginPath();
+    ctxRef.current?.moveTo(x, y);
   };
 
   const draw = (e: any) => {
-    if (!isDrawing || !ctx) return;
+    if (!isDrawing || !ctxRef.current) return;
     const { x, y } = getPos(e);
-    ctx.lineTo(x, y);
-    ctx.stroke();
+    ctxRef.current.lineTo(x, y);
+    ctxRef.current.stroke();
   };
 
   const stopDrawing = () => {
     setIsDrawing(false);
-    ctx?.closePath();
+    ctxRef.current?.closePath();
   };
 
   const handleSave = () => {
@@ -180,9 +177,9 @@ const SignaturePad = ({ title, onSave, onClose }: { title: string, onSave: (data
           <h3 className="font-bold text-lg text-slate-800">請簽名：{title}</h3>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-200 text-slate-500"><X size={24} /></button>
         </div>
-        <div ref={containerRef} className="flex-1 bg-white cursor-crosshair relative w-full touch-none select-none">
+        <div ref={containerRef as any} className="flex-1 bg-white cursor-crosshair relative w-full touch-none select-none">
           <canvas 
-            ref={canvasRef} 
+            ref={canvasRef as any} 
             className="absolute inset-0 w-full h-full touch-none"
             onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
             onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
@@ -190,7 +187,7 @@ const SignaturePad = ({ title, onSave, onClose }: { title: string, onSave: (data
           <div className="absolute bottom-2 left-0 right-0 text-center text-slate-200 pointer-events-none text-4xl font-bold opacity-20 select-none">簽署區域</div>
         </div>
         <div className="p-4 border-t bg-slate-50 flex gap-3 safe-area-bottom shrink-0">
-          <button onClick={() => ctx?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height)} className="flex-1 py-3 px-4 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50 active:scale-95 transition-transform shadow-sm"><Eraser size={20} /> 重寫</button>
+          <button onClick={() => ctxRef.current?.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height)} className="flex-1 py-3 px-4 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-slate-50 active:scale-95 transition-transform shadow-sm"><Eraser size={20} /> 重寫</button>
           <button onClick={handleSave} className="flex-[2] py-3 px-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 hover:bg-blue-700 active:scale-95 transition-transform flex items-center justify-center gap-2"><CheckCircle2 size={20} /> 完成簽名</button>
         </div>
       </div>
@@ -290,28 +287,23 @@ export default function App() {
   const fetchProducts = async () => {
     setDbLoading(true);
     try {
+      // ⚠️ 這裡很重要：檔名必須完全匹配
       const response = await fetch('/products.csv');
       if (!response.ok) throw new Error("找不到資料庫檔案");
       const text = await response.text();
       const lines = text.split('\n');
       const newProducts: any[] = [];
       
-      // 跳過標題列，假設第一列是標題
-      // 如果 CSV 沒有標題，將 startIndex 改為 0
       const startIndex = lines[0]?.includes('編號') ? 1 : 0;
 
       for (let i = startIndex; i < lines.length; i++) {
         const line = lines[i].trim();
         if (!line) continue;
-        
-        // 簡單的 CSV 解析 (假設沒有引號包覆的逗號)
         const parts = line.split(',');
         if (parts.length >= 3) {
-          // 移除 BOM 與空白
           const no = parts[0].trim().replace(/^\uFEFF/, '');
           const name = parts[1].trim();
           const price = parseFloat(parts[2].trim()) || 0;
-          
           if(no && name) {
              newProducts.push({ no, name, price });
           }
@@ -321,7 +313,6 @@ export default function App() {
       console.log(`已載入 ${newProducts.length} 筆產品資料`);
     } catch (e) {
       console.error("載入產品資料庫失敗:", e);
-      // 靜默失敗，使用者可以手動匯入
     } finally {
       setDbLoading(false);
     }
@@ -438,14 +429,10 @@ export default function App() {
   const handleExcelImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // 這裡我們暫時只支援 CSV 上傳作為前端演示
-    // 實際上我們鼓勵直接使用 public/products.csv
     const reader = new FileReader();
     reader.onload = (evt) => {
         const text = evt.target?.result as string;
         if(text) {
-            // 重複利用上方的 CSV 解析邏輯
             const lines = text.split('\n');
             const newProducts: any[] = [];
             const startIndex = lines[0]?.includes('編號') ? 1 : 0;
@@ -469,8 +456,6 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  // --- Render ---
-
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-blue-600"><Loader2 className="animate-spin" size={48} /></div>;
 
   if (!user) {
@@ -492,6 +477,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-[Microsoft JhengHei] pb-24 safe-area-bottom">
       
+      {/* 頂部 Header - 只放 Logo 與登出 */}
       {!isSigningMode && (
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 safe-area-top">
           <div className="flex justify-between items-center p-4">
@@ -500,26 +486,22 @@ export default function App() {
                <h1 className="font-bold text-lg tracking-tight text-slate-800">行動版 MO</h1>
              </div>
              <div className="flex items-center gap-2">
-               <span className="text-xs text-gray-500 hidden sm:inline">{user.email || '匿名使用者'}</span>
+               <span className="text-xs text-gray-500 hidden sm:inline">{user.email || '使用者'}</span>
                <button onClick={handleLogout} className="p-2 text-gray-400 hover:text-red-500 bg-gray-50 hover:bg-red-50 rounded-full transition-colors"><LogOut size={18} /></button>
              </div>
-          </div>
-          <div className="flex px-2 pb-0 overflow-x-auto hide-scrollbar">
-            <button onClick={() => setActiveTab('agreement')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-all ${activeTab === 'agreement' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>協議書</button>
-            <button onClick={() => setActiveTab('wo')} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-all ${activeTab === 'wo' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>工令管理</button>
-            <button onClick={() => { if(!currentWOId) return showAlert('請先選擇工令', 'error'); setActiveTab('mo'); }} className={`flex-1 py-3 text-sm font-bold border-b-2 transition-all ${activeTab === 'mo' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-400 hover:text-gray-600'}`}>MO 明細</button>
           </div>
         </header>
       )}
 
+      {/* 全螢幕簽署模式 Header */}
       {isSigningMode && (
         <div className="sticky top-0 z-40 bg-slate-900 text-white p-4 flex justify-between items-center shadow-lg safe-area-top">
            <span className="font-bold flex items-center gap-2"><PenTool size={18}/> 現場簽署模式</span>
-           <button onClick={() => setIsSigningMode(false)} className="bg-slate-700 px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 hover:bg-slate-600"><Minimize size={14}/> 退出</button>
+           <button onClick={() => setIsSigningMode(false)} className="bg-slate-700 px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 hover:bg-slate-600"><Maximize size={14}/> 退出</button>
         </div>
       )}
 
-      <main className={`p-4 max-w-2xl mx-auto w-full transition-all duration-300 ${isSigningMode ? 'bg-white min-h-screen' : ''}`}>
+      <main className={`p-4 max-w-2xl mx-auto w-full transition-all duration-300 ${isSigningMode ? 'bg-white min-h-screen' : 'mb-20'}`}>
         
         {/* Tab 1: 協議書 */}
         {activeTab === 'agreement' && (
@@ -727,9 +709,7 @@ export default function App() {
                  </div>
               </div>
               <div className="flex gap-2 overflow-x-auto py-1">
-                 <button onClick={() => setDbModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 shadow-sm hover:bg-slate-50 whitespace-nowrap">
-                    <Database size={16}/> 產品庫 ({products.length})
-                 </button>
+                 <button onClick={() => setDbModalOpen(true)} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 shadow-sm hover:bg-slate-50 whitespace-nowrap"><Database size={16}/> 產品庫</button>
                  <button className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 shadow-sm hover:bg-slate-50 whitespace-nowrap"><FileSpreadsheet size={16}/> 匯出 Excel</button>
               </div>
               <div className="space-y-3">
@@ -749,10 +729,39 @@ export default function App() {
                    </div>
                  ))}
               </div>
-              <button onClick={() => { setItemModal({ isOpen: true, data: { no: '', name: '', qty: '', price: 0 } }); setShowSuggestions(false); }} className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-600/40 flex items-center justify-center hover:bg-blue-700 active:scale-90 transition-all z-30"><Plus size={28} /></button>
+              <button onClick={() => { setItemModal({ isOpen: true, data: { no: '', name: '', qty: '', price: 0 } }); setShowSuggestions(false); }} className="fixed bottom-24 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-600/40 flex items-center justify-center hover:bg-blue-700 active:scale-90 transition-all z-30"><Plus size={28} /></button>
            </div>
         )}
       </main>
+
+      {/* --- Bottom Navigation (手機版固定底部) --- */}
+      {!isSigningMode && (
+        <nav className="fixed bottom-0 w-full bg-white border-t border-gray-200 flex justify-around items-center z-50 safe-area-bottom shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
+          <button 
+            onClick={() => setActiveTab('agreement')} 
+            className={`flex flex-col items-center justify-center flex-1 py-3 gap-1 transition-colors ${activeTab === 'agreement' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <FileText size={24} strokeWidth={activeTab === 'agreement' ? 2.5 : 2} />
+            <span className="text-[10px] font-bold">協議書</span>
+          </button>
+          
+          <button 
+            onClick={() => setActiveTab('wo')} 
+            className={`flex flex-col items-center justify-center flex-1 py-3 gap-1 transition-colors ${activeTab === 'wo' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <LayoutList size={24} strokeWidth={activeTab === 'wo' ? 2.5 : 2} />
+            <span className="text-[10px] font-bold">工令管理</span>
+          </button>
+          
+          <button 
+            onClick={() => { if(!currentWOId) return showAlert('請先選擇工令', 'error'); setActiveTab('mo'); }} 
+            className={`flex flex-col items-center justify-center flex-1 py-3 gap-1 transition-colors ${activeTab === 'mo' ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            <FileSpreadsheet size={24} strokeWidth={activeTab === 'mo' ? 2.5 : 2} />
+            <span className="text-[10px] font-bold">MO 明細</span>
+          </button>
+        </nav>
+      )}
 
       {/* --- Modals --- */}
       {signingRole && <SignaturePad title={signingRole.label} onSave={(img) => { const newSigs = { ...draftAgreement.signatures, [signingRole.id]: { img, date: new Date().toISOString().split('T')[0] } }; saveAgreement({ ...draftAgreement, signatures: newSigs }); setSigningRole(null); }} onClose={() => setSigningRole(null)} />}
