@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -89,9 +89,9 @@ const SIGNATURE_ROLES = [
 // ------------------------------------------------------------------
 const SignaturePad = ({ title, onSave, onClose }: { title: string, onSave: (data: string) => void, onClose: () => void }) => {
   const [isDrawing, setIsDrawing] = useState(false);
-  const canvasRef = useMemo(() => ({ current: null as HTMLCanvasElement | null }), []);
-  const containerRef = useMemo(() => ({ current: null as HTMLDivElement | null }), []);
-  const ctxRef = useMemo(() => ({ current: null as CanvasRenderingContext2D | null }), []);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -124,7 +124,7 @@ const SignaturePad = ({ title, onSave, onClose }: { title: string, onSave: (data
       resizeObserver.disconnect();
       document.body.style.overflow = 'unset';
     };
-  }, [canvasRef, containerRef, ctxRef]);
+  }, []);
 
   const getPos = (e: any) => {
     const canvas = canvasRef.current;
@@ -177,9 +177,9 @@ const SignaturePad = ({ title, onSave, onClose }: { title: string, onSave: (data
           <h3 className="font-bold text-lg text-slate-800">請簽名：{title}</h3>
           <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-200 text-slate-500"><X size={24} /></button>
         </div>
-        <div ref={containerRef as any} className="flex-1 bg-white cursor-crosshair relative w-full touch-none select-none">
+        <div ref={containerRef} className="flex-1 bg-white cursor-crosshair relative w-full touch-none select-none">
           <canvas 
-            ref={canvasRef as any} 
+            ref={canvasRef} 
             className="absolute inset-0 w-full h-full touch-none"
             onMouseDown={startDrawing} onMouseMove={draw} onMouseUp={stopDrawing} onMouseLeave={stopDrawing}
             onTouchStart={startDrawing} onTouchMove={draw} onTouchEnd={stopDrawing}
@@ -826,19 +826,8 @@ export default function App() {
                <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 text-blue-600"><Database size={32}/></div>
                <h3 className="font-bold text-xl mb-2 text-slate-800">產品資料庫</h3>
                <p className="text-slate-400 text-sm mb-6">目前共有 {products.length} 筆資料</p>
-               
-               {/* 提示訊息 */}
-               <div className="text-left bg-blue-50 p-4 rounded-xl mb-4 border border-blue-100">
-                  <p className="text-xs text-blue-800 font-bold mb-1">💡 如何更新資料庫？</p>
-                  <p className="text-xs text-blue-600 leading-relaxed">請將您的 Excel 轉存為 <code>products.csv</code>，並放入 GitHub 專案的 <code>public</code> 資料夾中，App 將自動載入。</p>
-               </div>
-
-               <div className="flex gap-2">
-                  <button onClick={fetchProducts} disabled={dbLoading} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 hover:bg-blue-700 active:scale-95 transition-transform">
-                     {dbLoading ? <Loader2 className="animate-spin" size={20}/> : <RefreshCw size={20}/>} 重新載入
-                  </button>
-                  <button onClick={() => setDbModalOpen(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 rounded-xl">關閉</button>
-               </div>
+               <label className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 cursor-pointer hover:bg-blue-700 active:scale-95 transition-transform mb-3"><Upload size={20} /> 匯入 Excel 檔案<input type="file" accept=".xlsx" className="hidden" onChange={handleExcelImport} /></label>
+               <button onClick={() => setDbModalOpen(false)} className="w-full py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl">關閉</button>
             </div>
          </div>
       )}
