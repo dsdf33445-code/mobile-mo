@@ -16,10 +16,11 @@ export default function MoDetailView({
   currentWorkOrder, items, onDeleteItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount 
 }: Props) {
   
-  // 匯出包含分頁設定的 .xls 格式 (HTML based Excel)
+  // 匯出 Excel (.xls) 功能
   const handleExport = () => {
     if (!items || items.length === 0) return;
     
+    // 定義標題列，符合 SampleXG.xls 格式
     const headers = ['項目編號(*必填)', '項目名稱(可不填寫)', '數量(*必填)', '倍率(*必填)', '加成(*必填)', '備註(可不填寫)'];
     
     // 1. 構建 HTML Table 內容
@@ -31,7 +32,7 @@ export default function MoDetailView({
 
     items.forEach((item) => {
       tableHtml += '<tr>';
-      // mso-number-format:'\@' 強制 Excel 將此欄位視為文字，避免 001 被轉成 1
+      // style="mso-number-format:'\@'" 強制 Excel 將此欄位視為文字，避免 001 被轉成 1
       tableHtml += `<td style="mso-number-format:'\\@'">${item.no}</td>`;
       tableHtml += `<td>${item.name}</td>`;
       tableHtml += `<td>${item.qty}</td>`;
@@ -42,7 +43,7 @@ export default function MoDetailView({
     });
     tableHtml += '</tbody></table>';
 
-    // 2. 組合 Excel XML 模板 (設定分頁名稱為 ITEM)
+    // 2. 組合 Excel XML 模板 (關鍵：設定分頁名稱 <x:Name>ITEM</x:Name>)
     const excelTemplate = `
       <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
       <head>
@@ -59,7 +60,7 @@ export default function MoDetailView({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    // 副檔名改為 .xls 以配合 MIME type，這會導致開啟時出現格式警告，但能保留分頁名稱
+    // 設定下載檔名為 .xls
     link.setAttribute('download', `${currentWorkOrder?.no || 'export'}_ITEM.xls`);
     document.body.appendChild(link);
     link.click();
@@ -68,6 +69,7 @@ export default function MoDetailView({
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500 pb-20">
+      {/* 上方資訊卡片 */}
       <div className="bg-[#1e3a8a] text-white p-5 rounded-3xl shadow-xl shadow-blue-900/20 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
         
@@ -91,7 +93,7 @@ export default function MoDetailView({
         </div>
       </div>
       
-      {/* 按鈕區域：使用 justify-between 將左右分開 */}
+      {/* 功能按鈕區：左右分佈 */}
       <div className="flex justify-between items-center py-1 overflow-x-auto">
          {/* 左側：更新資料庫 */}
          <button onClick={onReloadDb} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 shadow-sm hover:bg-slate-50 whitespace-nowrap active:scale-95 transition-transform">
@@ -99,7 +101,7 @@ export default function MoDetailView({
             更新資料庫 ({productCount})
          </button>
 
-         {/* 右側群組：前往 MO & 匯出 Excel */}
+         {/* 右側：前往 MO & 匯出 Excel */}
          <div className="flex gap-2 ml-2">
             <a 
               href="https://dsz.csc.com.tw/dsz/login/dszs0?action=https://cscqs01.csc.com.tw/qs_home/QS_HOME_Redirect.ASP%3FECinfo=MO01" 
@@ -115,6 +117,7 @@ export default function MoDetailView({
          </div>
       </div>
 
+      {/* 項目列表 */}
       <div className="space-y-3">
         {items.map((item) => (
           <div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
@@ -131,7 +134,6 @@ export default function MoDetailView({
                     <h3 className="font-bold text-slate-800 text-sm truncate">{item.name}</h3>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-slate-500 bg-slate-50 p-2 rounded-lg inline-flex">
-                    {/* 修改：單價加入千分位顯示 */}
                     <span>單價: <span className="font-mono">${item.price.toLocaleString()}</span></span>
                     <div className="w-px h-3 bg-slate-300"></div>
                     <span className="text-blue-600 font-bold">數量: {item.qty}</span>
