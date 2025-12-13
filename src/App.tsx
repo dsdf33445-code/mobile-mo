@@ -12,12 +12,13 @@ import {
   serverTimestamp, 
   orderBy, 
   onSnapshot, 
+  writeBatch,
   type QuerySnapshot, 
   type DocumentSnapshot 
 } from 'firebase/firestore';
 import { 
   FileSpreadsheet, AlertTriangle, CheckCircle2, LogOut, Loader2, User as UserIcon, 
-  GitMerge, CheckSquare, Square, Send 
+  GitMerge, CheckSquare, Square, Send, X 
 } from 'lucide-react';
 
 import { auth, db, provider } from './firebase';
@@ -26,35 +27,36 @@ import AgreementView from './components/AgreementView';
 import WorkOrderListView from './components/WorkOrderListView';
 import MoDetailView from './components/MoDetailView';
 import BottomNavigation from './components/BottomNavigation';
+import type { WorkOrder, WorkOrderItem, Product, Agreement, SigningRole } from './types';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'agreement' | 'wo' | 'mo'>('wo');
   
-  // Data
-  const [workOrders, setWorkOrders] = useState<any[]>([]);
-  const [items, setItems] = useState<any[]>([]);
-  const [products, setProducts] = useState<any[]>([]);
+  // Data State with Types
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [items, setItems] = useState<WorkOrderItem[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [currentWOId, setCurrentWOId] = useState<string | null>(null);
-  const [draftAgreement, setDraftAgreement] = useState<any>({});
+  const [draftAgreement, setDraftAgreement] = useState<Partial<Agreement>>({});
   const [dbLoading, setDbLoading] = useState(false);
   const [sharedOwnerId, setSharedOwnerId] = useState<string | null>(null);
 
-  // UI
-  const [dialog, setDialog] = useState<any>({ isOpen: false });
-  const [woModal, setWoModal] = useState<any>({ isOpen: false, data: null });
-  const [itemModal, setItemModal] = useState<any>({ isOpen: false, data: null });
-  const [mergeModal, setMergeModal] = useState<any>({ isOpen: false, selectedIds: [] });
-  const [transferModal, setTransferModal] = useState<any>({ isOpen: false, targetEmail: '' });
+  // UI State
+  const [dialog, setDialog] = useState<{isOpen: boolean; type?: 'error'|'success'|'confirm'|'alert'; message?: string; onConfirm?: () => void}>({ isOpen: false });
+  const [woModal, setWoModal] = useState<{isOpen: boolean; data: Partial<WorkOrder> | null}>({ isOpen: false, data: null });
+  const [itemModal, setItemModal] = useState<{isOpen: boolean; data: Partial<WorkOrderItem> | null}>({ isOpen: false, data: null });
+  const [mergeModal, setMergeModal] = useState<{isOpen: boolean; selectedIds: string[]}>({ isOpen: false, selectedIds: [] });
+  const [transferModal, setTransferModal] = useState<{isOpen: boolean; targetEmail: string}>({ isOpen: false, targetEmail: '' });
   
-  const [signingRole, setSigningRole] = useState<any>(null);
+  const [signingRole, setSigningRole] = useState<SigningRole | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [filteredProducts, setFilteredProducts] = useState<any[]>([]);
+  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
 
   // Computed
   const currentWorkOrder = useMemo(() => workOrders.find(w => w.id === currentWOId), [workOrders, currentWOId]);
-  const currentItems = useMemo(() => items.filter(i => i.workOrderId === currentWOId), [items, currentWOId]);
+  const currentItems = items;
 
   // --- Effects ---
   useEffect(() => {
@@ -92,7 +94,7 @@ export default function App() {
         try { text = new TextDecoder('big5').decode(buf); } catch(e) {}
       }
       const lines = text.split(/\r\n|\n/);
-      const newProds = [];
+      const newProds: Product[] = [];
       const start = (lines[0]?.includes('編號') || lines[0]?.includes('no')) ? 1 : 0;
       for(let i=start; i<lines.length; i++) {
         const l = lines[i].trim();
@@ -116,17 +118,44 @@ export default function App() {
     if (!uid) return;
 
     if (sharedOwnerId && currentWOId) {
-       getDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'workOrders', currentWOId)).then(s => s.exists() && setWorkOrders([{id:s.id, ...s.data()}]));
-       return onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => s.exists() && setDraftAgreement(s.data()));
+       getDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'workOrders', currentWOId)).then(s => s.exists() && setWorkOrders([{id:s.id, ...s.data()} as WorkOrder]));
+    } else {
+       const unsubWO = onSnapshot(query(collection(db, 'artifacts', 'mobile-mo', 'users', uid, 'workOrders'), orderBy('createdAt', 'desc')), (s: QuerySnapshot) => setWorkOrders(s.docs.map(d => ({id:d.id, ...d.data()} as WorkOrder))));
+       return () => unsubWO();
     }
+  }, [user, sharedOwnerId, currentWOId]);
 
-    const unsubWO = onSnapshot(query(collection(db, 'artifacts', 'mobile-mo', 'users', uid, 'workOrders'), orderBy('createdAt', 'desc')), (s: QuerySnapshot) => setWorkOrders(s.docs.map(d => ({id:d.id, ...d.data()}))));
-    const unsubItems = onSnapshot(query(collection(db, 'artifacts', 'mobile-mo', 'users', uid, 'items')), (s: QuerySnapshot) => setItems(s.docs.map(d => ({id:d.id, ...d.data()}))));
+  useEffect(() => {
+    if ((!user && !sharedOwnerId) || !currentWOId) {
+        setItems([]);
+        return;
+    }
+    const uid = sharedOwnerId || user?.uid;
+    if (!uid) return;
+
+    setLoading(true);
+    const q = query(
+        collection(db, 'artifacts', 'mobile-mo', 'users', uid, 'items'), 
+        where('workOrderId', '==', currentWOId)
+    );
     
+    const unsubItems = onSnapshot(q, (s: QuerySnapshot) => {
+        setItems(s.docs.map(d => ({id:d.id, ...d.data()} as WorkOrderItem)));
+        setLoading(false);
+    });
+    
+    return () => unsubItems();
+  }, [user, currentWOId, sharedOwnerId]);
+
+  useEffect(() => {
+    if (!user && !sharedOwnerId) return;
+    const uid = sharedOwnerId || user?.uid;
+    if (!uid) return;
+
     let unsubAgree = () => {};
     if (currentWOId) {
        unsubAgree = onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => {
-         if(s.exists()) setDraftAgreement(s.data());
+         if(s.exists()) setDraftAgreement(s.data() as Agreement);
          else if (!sharedOwnerId) {
            const wo = workOrders.find(w => w.id === currentWOId);
            setDraftAgreement({ 
@@ -142,14 +171,14 @@ export default function App() {
     } else {
         if(!sharedOwnerId) setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
     }
-    return () => { unsubWO(); unsubItems(); unsubAgree(); };
-  }, [user, currentWOId, sharedOwnerId, currentWorkOrder]);
+    return () => unsubAgree();
+  }, [user, currentWOId, sharedOwnerId, workOrders]);
 
   // --- Handlers ---
   const handleLogin = async () => { try { setLoading(true); await signInWithPopup(auth, provider); } catch(e) { setDialog({isOpen:true, type:'error', message:'登入失敗'}); setLoading(false); } };
   const handleLogout = () => signOut(auth);
   
-  const handleUpdateAgreement = (field: string, value: any) => {
+  const handleUpdateAgreement = (field: keyof Agreement, value: any) => {
     if (field === 'woNo') value = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     const newState = { ...draftAgreement, [field]: value };
     setDraftAgreement(newState);
@@ -172,7 +201,8 @@ export default function App() {
     const uid = sharedOwnerId || user?.uid;
     if(!uid || !currentWOId || !signingRole) return;
     const today = new Date().toISOString().split('T')[0];
-    const newSigs = { ...draftAgreement.signatures, [signingRole.id]: { img, date: today } };
+    const currentSigs = draftAgreement.signatures || {};
+    const newSigs = { ...currentSigs, [signingRole.id]: { img, date: today } };
     setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), { ...draftAgreement, signatures: newSigs }, {merge:true});
     setSigningRole(null);
   };
@@ -180,7 +210,11 @@ export default function App() {
   const handleSignatureDateChange = (roleId: string, date: string) => {
     const uid = sharedOwnerId || user?.uid;
     if(!uid || !currentWOId) return;
-    const newSigs = { ...draftAgreement.signatures, [roleId]: { ...draftAgreement.signatures[roleId], date } };
+    const currentSigs = draftAgreement.signatures || {};
+    const currentSig = currentSigs[roleId];
+    if (!currentSig) return;
+
+    const newSigs = { ...currentSigs, [roleId]: { ...currentSig, date } };
     setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), { signatures: newSigs }, {merge:true});
     setSigningRole(null);
   };
@@ -196,7 +230,7 @@ export default function App() {
   };
 
   const handleSaveWO = async () => {
-    if(!woModal.data.no || !woModal.data.name) return;
+    if(!woModal.data?.no || !woModal.data?.name) return;
     if(woModal.data.status==='MO' && (!woModal.data.subNo || woModal.data.subNo.length<2)) return setDialog({isOpen:true, type:'error', message:'MO 狀態需填寫分工令'});
     
     const isNew = !woModal.data.id;
@@ -231,7 +265,7 @@ export default function App() {
   };
 
   const handleSaveItem = async () => {
-    if(!itemModal.data.no || !itemModal.data.qty) return;
+    if(!itemModal.data?.no || !itemModal.data?.qty) return;
     const id = itemModal.data.id || doc(collection(db, 'dummy')).id;
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items', id), { ...itemModal.data, workOrderId: currentWOId, qty: Number(itemModal.data.qty), price: Number(itemModal.data.price||0) });
     setItemModal({isOpen:false, data:null});
@@ -244,20 +278,28 @@ export default function App() {
       const sourceWos = workOrders.filter(w => mergeModal.selectedIds.includes(w.id));
       const q = query(collection(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items'), where('workOrderId', 'in', mergeModal.selectedIds));
       const querySnapshot = await getDocs(q);
-      const sourceItems = querySnapshot.docs.map(d => d.data());
+      const sourceItems = querySnapshot.docs.map(d => d.data() as WorkOrderItem);
+
+      const batch = writeBatch(db);
 
       for (const srcItem of sourceItems) {
         const existingItem = currentItems.find(i => i.no === srcItem.no);
         const srcWo = sourceWos.find(w => w.id === srcItem.workOrderId);
+        
         if (existingItem) {
           const newQty = Number(existingItem.qty) + Number(srcItem.qty);
           const remark = existingItem.remark ? `${existingItem.remark}, ${srcWo?.no}` : `合併自: ${srcWo?.no}`;
-          await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items', existingItem.id), { qty: newQty, remark: remark }, { merge: true });
+          const itemRef = doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items', existingItem.id);
+          batch.update(itemRef, { qty: newQty, remark: remark });
         } else {
           const newId = doc(collection(db, 'dummy')).id;
-          await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items', newId), { ...srcItem, workOrderId: currentWOId, remark: `合併自: ${srcWo?.no}` });
+          const itemRef = doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items', newId);
+          batch.set(itemRef, { ...srcItem, id: newId, workOrderId: currentWOId, remark: `合併自: ${srcWo?.no}` });
         }
       }
+
+      await batch.commit();
+
       setDialog({isOpen:true, type:'success', message:`成功合併 ${sourceItems.length} 個項目`});
       setMergeModal({ isOpen: false, selectedIds: [] });
     } catch (e) {
@@ -281,7 +323,7 @@ export default function App() {
     }});
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-blue-600"><Loader2 className="animate-spin" size={48}/></div>;
+  if (loading && items.length === 0) return <div className="min-h-screen flex items-center justify-center text-blue-600"><Loader2 className="animate-spin" size={48}/></div>;
   
   if (!user && !sharedOwnerId) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 p-6">
@@ -301,7 +343,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-[Microsoft JhengHei] pb-24 safe-area-bottom">
       
-      {/* Header: 列印時隱藏 */}
+      {/* Header */}
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b p-4 flex justify-between safe-area-top no-print">
         <div className="flex items-center gap-2 font-bold text-lg text-slate-800"><FileSpreadsheet size={18}/> 行動版 MO</div>
         <div className="flex items-center gap-2">
@@ -330,8 +372,8 @@ export default function App() {
         {activeTab === 'wo' && (
           <WorkOrderListView 
             workOrders={workOrders} 
-            onSelect={(wo:any) => { setCurrentWOId(wo.id); setActiveTab('mo'); }}
-            onEdit={(wo:any) => { setWoModal({isOpen:true, data:wo}); }}
+            onSelect={(wo: WorkOrder) => { setCurrentWOId(wo.id); setActiveTab('mo'); }}
+            onEdit={(wo: WorkOrder) => { setWoModal({isOpen:true, data:wo}); }}
             onDelete={(id:string) => handleDelete('workOrders', id)}
             onAdd={() => { setWoModal({isOpen:true, data:{no:'', name:'', status:'接收工令'}}); }}
             onCheckAgreement={(id:string) => { setCurrentWOId(id); setActiveTab('agreement'); }}
@@ -341,14 +383,13 @@ export default function App() {
           <MoDetailView 
             currentWorkOrder={currentWorkOrder} items={currentItems} dbLoading={dbLoading} productCount={products.length}
             onDeleteItem={(id:string) => handleDelete('items', id)}
-            onAddClick={() => { setItemModal({isOpen:true, data:{no:'', name:'', qty:'', price:0}}); setShowSuggestions(false); }}
+            onAddClick={() => { setItemModal({isOpen:true, data:{no:'', name:'', qty:0, price:0}}); setShowSuggestions(false); }}
             onReloadDb={fetchProducts}
             onMergeClick={() => setMergeModal({ isOpen: true, selectedIds: [] })}
           />
         )}
       </main>
 
-      {/* 導航列: 列印時隱藏 */}
       <div className="no-print">
          <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} onMoClick={() => { if(!currentWOId) return setDialog({isOpen:true, type:'alert', message:'請先選擇工令'}); setActiveTab('mo'); }} />
       </div>
@@ -358,22 +399,21 @@ export default function App() {
       {woModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
-              <h3 className="font-bold text-lg mb-4">{woModal.data.id ? '編輯工令' : '新增工令'}</h3>
+              <h3 className="font-bold text-lg mb-4">{woModal.data?.id ? '編輯工令' : '新增工令'}</h3>
               <div className="space-y-4">
                  <div>
                     <label className="text-xs font-bold text-gray-500 block mb-1">工令編號</label>
-                    <input type="text" maxLength={8} value={woModal.data.no} onChange={e => setWoModal({...woModal, data:{...woModal.data, no:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold font-mono" placeholder="請輸入8碼工令編號" />
+                    <input type="text" maxLength={8} value={woModal.data?.no || ''} onChange={e => setWoModal({...woModal, data:{...woModal.data, no:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold font-mono" placeholder="請輸入8碼工令編號" />
                  </div>
-                 <div><label className="text-xs font-bold text-gray-500 block mb-1">工程名稱</label><input type="text" value={woModal.data.name} onChange={e => setWoModal({...woModal, data:{...woModal.data, name:e.target.value}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold" placeholder="請輸入工程名稱" /></div>
-                 <div><label className="text-xs font-bold text-gray-500 block mb-1">狀態</label><select value={woModal.data.status} onChange={e => setWoModal({...woModal, data:{...woModal.data, status:e.target.value}})} className="w-full border p-3 rounded-xl"><option>接收工令</option><option>MO</option><option>已完工</option><option>已結案</option></select></div>
-                 {woModal.data.status==='MO' && <div><label className="text-xs text-blue-500 font-bold block mb-1">分工令 (必填)</label><input type="text" maxLength={2} value={woModal.data.subNo||''} onChange={e => setWoModal({...woModal, data:{...woModal.data, subNo:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'')}})} className="w-full border-2 border-blue-200 p-3 rounded-xl font-mono font-bold text-center text-xl" /></div>}
-                 <div className="flex gap-2 pt-2"><button onClick={() => setWoModal({isOpen:false})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button><button onClick={handleSaveWO} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg">儲存</button></div>
+                 <div><label className="text-xs font-bold text-gray-500 block mb-1">工程名稱</label><input type="text" value={woModal.data?.name || ''} onChange={e => setWoModal({...woModal, data:{...woModal.data, name:e.target.value}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold" placeholder="請輸入工程名稱" /></div>
+                 <div><label className="text-xs font-bold text-gray-500 block mb-1">狀態</label><select value={woModal.data?.status || '接收工令'} onChange={e => setWoModal({...woModal, data:{...woModal.data, status:e.target.value}})} className="w-full border p-3 rounded-xl"><option>接收工令</option><option>MO</option><option>已完工</option><option>已結案</option></select></div>
+                 {woModal.data?.status==='MO' && <div><label className="text-xs text-blue-500 font-bold block mb-1">分工令 (必填)</label><input type="text" maxLength={2} value={woModal.data.subNo||''} onChange={e => setWoModal({...woModal, data:{...woModal.data, subNo:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'')}})} className="w-full border-2 border-blue-200 p-3 rounded-xl font-mono font-bold text-center text-xl" /></div>}
+                 <div className="flex gap-2 pt-2"><button onClick={() => setWoModal({isOpen:false, data:null})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button><button onClick={handleSaveWO} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg">儲存</button></div>
               </div>
            </div>
         </div>
       )}
 
-      {/* 轉交視窗 */}
       {transferModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
@@ -381,7 +421,7 @@ export default function App() {
               <p className="text-xs text-gray-500 mb-4">輸入對方的 Email 或名稱以轉交整份文件。</p>
               <div className="space-y-4">
                  <input type="text" value={transferModal.targetEmail} onChange={e => setTransferModal({...transferModal, targetEmail:e.target.value})} className="w-full bg-slate-50 border p-3 rounded-xl" placeholder="輸入 Email..." />
-                 <div className="flex gap-2 pt-2"><button onClick={() => setTransferModal({isOpen:false})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button><button onClick={handleTransfer} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg">確認轉交</button></div>
+                 <div className="flex gap-2 pt-2"><button onClick={() => setTransferModal({isOpen:false, targetEmail:''})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button><button onClick={handleTransfer} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg">確認轉交</button></div>
               </div>
            </div>
         </div>
@@ -390,7 +430,7 @@ export default function App() {
       {mergeModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-sm rounded-3xl flex flex-col shadow-xl animate-in zoom-in-95 max-h-[80vh]">
-              <div className="p-4 border-b flex justify-between items-center"><h3 className="font-bold text-lg flex gap-2"><GitMerge/> 合併工令</h3><button onClick={() => setMergeModal({isOpen:false})}><X/></button></div>
+              <div className="p-4 border-b flex justify-between items-center"><h3 className="font-bold text-lg flex gap-2"><GitMerge/> 合併工令</h3><button onClick={() => setMergeModal({isOpen:false, selectedIds:[]})}><X size={20}/></button></div>
               <div className="p-4 overflow-y-auto flex-1 space-y-2">
                  <p className="text-xs text-gray-500 mb-2">請選擇要合併進來的工令 (可多選)：</p>
                  {workOrders.filter(w => w.id !== currentWOId).map(wo => (
@@ -405,7 +445,7 @@ export default function App() {
                  {workOrders.length <= 1 && <div className="text-center text-gray-400 py-4">沒有其他工令可供合併</div>}
               </div>
               <div className="p-4 border-t flex gap-2">
-                 <button onClick={() => setMergeModal({isOpen:false})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button>
+                 <button onClick={() => setMergeModal({isOpen:false, selectedIds:[]})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button>
                  <button onClick={handleMergeWorkOrders} disabled={mergeModal.selectedIds.length === 0} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none">確認合併</button>
               </div>
            </div>
@@ -416,27 +456,27 @@ export default function App() {
       {itemModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-xl animate-in slide-in-from-bottom-10">
-              <div className="flex justify-between mb-4"><h3 className="font-bold">新增項目</h3><button onClick={() => setItemModal({isOpen:false})}><X size={20}/></button></div>
+              <div className="flex justify-between mb-4"><h3 className="font-bold">新增項目</h3><button onClick={() => setItemModal({isOpen:false, data:null})}><X size={20}/></button></div>
               <div className="space-y-4">
                  <div className="relative">
                     <label className="text-xs font-bold text-gray-500 block mb-1">項目編號</label>
-                    <input type="text" value={itemModal.data.no} onChange={e => { const v=e.target.value.toUpperCase(); setItemModal({...itemModal, data:{...itemModal.data, no:v}}); if(v) { setFilteredProducts(products.filter(p=>p.no.includes(v)||p.name.includes(v))); setShowSuggestions(true); } else setShowSuggestions(false); }} className="w-full border p-3 rounded-xl font-mono" placeholder="搜尋編號..." />
+                    <input type="text" value={itemModal.data?.no || ''} onChange={e => { const v=e.target.value.toUpperCase(); setItemModal({...itemModal, data:{...itemModal.data, no:v}}); if(v) { setFilteredProducts(products.filter(p=>p.no.includes(v)||p.name.includes(v))); setShowSuggestions(true); } else setShowSuggestions(false); }} className="w-full border p-3 rounded-xl font-mono" placeholder="搜尋編號..." />
                     {showSuggestions && <ul className="absolute z-10 w-full bg-white border shadow-xl max-h-40 overflow-y-auto">{filteredProducts.map(p=><li key={p.no} onClick={() => { setItemModal({...itemModal, data:{...itemModal.data, no:p.no, name:p.name, price:p.price}}); setShowSuggestions(false); }} className="p-3 hover:bg-blue-50 border-b cursor-pointer"><span className="font-bold text-blue-600 font-mono block">{p.no}</span><span className="text-xs">{p.name}</span></li>)}</ul>}
                  </div>
                  
                  <div>
                     <label className="text-xs font-bold text-gray-500 block mb-1">項目名稱</label>
-                    <input type="text" readOnly value={itemModal.data.name} className="w-full bg-slate-100 p-3 rounded-xl" />
+                    <input type="text" readOnly value={itemModal.data?.name || ''} className="w-full bg-slate-100 p-3 rounded-xl" />
                  </div>
                  
                  <div className="flex gap-3">
                     <div className="flex-1">
                         <label className="text-xs font-bold text-gray-500 block mb-1">單價</label>
-                        <input type="number" readOnly value={itemModal.data.price} className="w-full bg-slate-100 p-3 rounded-xl text-center" />
+                        <input type="number" readOnly value={itemModal.data?.price || 0} className="w-full bg-slate-100 p-3 rounded-xl text-center" />
                     </div>
                     <div className="flex-1">
                         <label className="text-xs font-bold text-gray-500 block mb-1">數量</label>
-                        <input type="number" value={itemModal.data.qty} onChange={e => setItemModal({...itemModal, data:{...itemModal.data, qty:e.target.value}})} className="w-full border p-3 rounded-xl text-center font-bold text-blue-600" autoFocus />
+                        <input type="number" value={itemModal.data?.qty || ''} onChange={e => setItemModal({...itemModal, data:{...itemModal.data, qty: Number(e.target.value)}})} className="w-full border p-3 rounded-xl text-center font-bold text-blue-600" autoFocus />
                     </div>
                  </div>
                  <button onClick={handleSaveItem} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold mt-2 shadow-lg">儲存</button>

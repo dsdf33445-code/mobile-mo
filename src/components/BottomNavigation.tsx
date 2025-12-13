@@ -1,6 +1,12 @@
 import { FileSpreadsheet, FileText, LayoutList } from 'lucide-react';
 
-export default function BottomNavigation({ activeTab, setActiveTab, onMoClick }: any) {
+interface Props {
+  activeTab: 'agreement' | 'wo' | 'mo';
+  setActiveTab: (tab: 'agreement' | 'wo' | 'mo') => void;
+  onMoClick: () => void;
+}
+
+export default function BottomNavigation({ activeTab, setActiveTab, onMoClick }: Props) {
   return (
     <nav className="fixed bottom-0 w-full bg-white border-t flex justify-around items-center z-50 safe-area-bottom shadow">
       <button onClick={() => setActiveTab('agreement')} className={`flex flex-col items-center flex-1 py-3 ${activeTab === 'agreement' ? 'text-blue-600' : 'text-gray-400'}`}><FileText size={24}/><span className="text-[10px]">協議書</span></button>

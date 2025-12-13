@@ -1,8 +1,17 @@
 import { Plus, Edit2, Trash2, FileText, ArrowRight, ClipboardList } from 'lucide-react';
+import type { WorkOrder } from '../types';
 
-export default function WorkOrderListView({ workOrders, onSelect, onEdit, onDelete, onAdd, onCheckAgreement }: any) {
+interface Props {
+  workOrders: WorkOrder[];
+  onSelect: (wo: WorkOrder) => void;
+  onEdit: (wo: WorkOrder) => void;
+  onDelete: (id: string) => void;
+  onAdd: () => void;
+  onCheckAgreement: (id: string) => void;
+}
+
+export default function WorkOrderListView({ workOrders, onSelect, onEdit, onDelete, onAdd, onCheckAgreement }: Props) {
   
-  // 4. 狀態顏色區分
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'MO': return 'bg-purple-100 text-purple-600 border-purple-200';
@@ -22,7 +31,7 @@ export default function WorkOrderListView({ workOrders, onSelect, onEdit, onDele
         <div className="text-center py-20 text-slate-400"><ClipboardList size={48} className="mx-auto mb-4 opacity-20" /><p>尚無工令資料</p></div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {workOrders.map((wo: any) => (
+          {workOrders.map((wo) => (
             <div key={wo.id} onClick={() => onSelect(wo)} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all active:scale-[0.98] cursor-pointer relative overflow-hidden">
               <div className="flex justify-between items-start mb-2">
                 <span className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${getStatusColor(wo.status)}`}>{wo.status}</span>

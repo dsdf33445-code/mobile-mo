@@ -1,11 +1,25 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, X, PenTool, FileText, Send, Printer } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, PenTool, FileText, Send, Printer, FileSignature } from 'lucide-react';
 import { CONTRACTOR_OPTIONS, SAFETY_CHECK_ITEMS, SIGNATURE_ROLES } from '../constants';
+import type { Agreement, SigningRole } from '../types';
+
+interface Props {
+  data: Partial<Agreement>;
+  currentWOId: string | null;
+  isShared: boolean;
+  onChange: (field: keyof Agreement, value: any) => void;
+  onToggleSafety: (idx: number) => void;
+  onSigning: (role: SigningRole) => void;
+  onClearSignature: (roleId: string) => void;
+  onDateChange: (roleId: string, date: string) => void;
+  onCreate: () => void;
+  onTransfer: () => void;
+}
 
 export default function AgreementView({ 
   data, currentWOId, isShared, 
   onChange, onToggleSafety, onSigning, onClearSignature, onDateChange, onCreate, onTransfer
-}: any) {
+}: Props) {
   const [isSafetyExpanded, setIsSafetyExpanded] = useState(false);
   
   return (
@@ -31,7 +45,6 @@ export default function AgreementView({
       )}
 
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden print:border-0 print:shadow-none">
-        {/* 列印時標題改為置中大字 */}
         <div className="bg-slate-50 p-4 border-b text-center text-slate-500 font-bold text-sm print:bg-white print:text-black print:text-xl print:border-b-2 print:border-black">工程委辦及開工工安協議書</div>
         
         <div className="p-5 space-y-6 print:p-0 print:pt-4">
@@ -81,7 +94,6 @@ export default function AgreementView({
               <span className="font-bold text-slate-700 text-sm">施工前安全確認事項 ({data.safetyChecks?.length || 0}/20)</span>
               {isSafetyExpanded ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
             </button>
-            {/* 螢幕顯示版本：可勾選 */}
             {(isSafetyExpanded || true) && (
               <div className={`p-2 bg-white max-h-96 overflow-y-auto no-print ${isSafetyExpanded ? '' : 'hidden'}`}>
                 {SAFETY_CHECK_ITEMS.map((item, idx) => (
@@ -92,15 +104,11 @@ export default function AgreementView({
                 ))}
               </div>
             )}
-            {/* 列印版本：只顯示已勾選項目，純文字 */}
-            <div className="hidden print-only pt-2">
-                 <h4 className="font-bold mb-2 text-sm">施工前安全確認事項：</h4>
-                 <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                    {SAFETY_CHECK_ITEMS.filter((_, i) => (data.safetyChecks || []).includes(i)).map(item => (
-                        <div key={item} className="text-xs">☑ {item.substring(3)}</div> // 去除編號讓排版更整齊
-                    ))}
-                    {(data.safetyChecks || []).length === 0 && <span className="text-xs text-gray-500">無勾選項目</span>}
-                 </div>
+            <div className="hidden print-only p-4">
+                 <h4 className="font-bold mb-2">安全確認事項：</h4>
+                 {SAFETY_CHECK_ITEMS.filter((_, i) => (data.safetyChecks || []).includes(i)).map(item => (
+                     <div key={item} className="text-sm mb-1">☑ {item}</div>
+                 ))}
             </div>
           </div>
 
@@ -115,8 +123,8 @@ export default function AgreementView({
                   </div>
                   {data.signatures?.[role.id] ? (
                     <div className="flex flex-col items-center">
-                      <img src={data.signatures[role.id].img} alt="簽名" className="h-16 object-contain mix-blend-multiply" />
-                      <input type="date" value={data.signatures[role.id].date} onClick={e => e.stopPropagation()} onChange={e => onDateChange(role.id, e.target.value)} className="text-xs border rounded px-1 mt-1 text-gray-500 print:border-0 print:text-black" />
+                      <img src={data.signatures[role.id]!.img} alt="簽名" className="h-16 object-contain mix-blend-multiply" />
+                      <input type="date" value={data.signatures[role.id]!.date} onClick={e => e.stopPropagation()} onChange={e => onDateChange(role.id, e.target.value)} className="text-xs border rounded px-1 mt-1 text-gray-500 print:border-0 print:text-black" />
                     </div>
                   ) : (
                     <div className="h-16 flex items-center justify-center text-slate-300 gap-2 no-print"><PenTool size={16}/> 點擊簽名</div>

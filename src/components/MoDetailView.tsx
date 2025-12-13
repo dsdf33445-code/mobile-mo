@@ -1,36 +1,45 @@
 import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2, GitMerge } from 'lucide-react';
+import type { WorkOrder, WorkOrderItem } from '../types';
 
-// 修正：移除未使用的 onExcelExport
-export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount }: any) {
+interface Props {
+  currentWorkOrder?: WorkOrder;
+  items: WorkOrderItem[];
+  onDeleteItem: (id: string) => void;
+  onAddClick: () => void;
+  onReloadDb: () => void;
+  onMergeClick: () => void;
+  dbLoading: boolean;
+  productCount: number;
+}
+
+export default function MoDetailView({ 
+  currentWorkOrder, items, onDeleteItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount 
+}: Props) {
   
-  // 實作簡易 Excel (CSV) 匯出功能 - 格式更新 (SampleXG.xls)
   const handleExport = () => {
     if (!items || items.length === 0) return;
     
-    // 2. 修改匯出格式：倍率與加成帶入1.0，備註空白
     const headers = ['項目編號(*必填)', '項目名稱(可不填寫)', '數量(*必填)', '倍率(*必填)', '加成(*必填)', '備註(可不填寫)'];
     
-    // 轉換資料列
-    const rows = items.map((item: any) => [
+    const rows = items.map((item) => [
       item.no,
       `"${item.name}"`, 
       item.qty,
-      '1.0', // 倍率自動帶入 1.0
-      '1.0', // 加成自動帶入 1.0
-      ''     // 備註空白
+      '1.0', 
+      '1.0', 
+      ''     
     ]);
 
-    // 組合 CSV 內容 (加上 BOM \uFEFF)
-    const csvContent = [
+    constPv = [
       headers.join(','), 
-      ...rows.map((r: any[]) => r.join(','))
+      ...rows.map((r) => r.join(','))
     ].join('\n');
     
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `${currentWorkOrder?.no || 'export'}_ITEM.csv`); // 檔名後綴改為 _ITEM.csv
+    link.setAttribute('download', `${currentWorkOrder?.no || 'export'}_ITEM.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -38,9 +47,7 @@ export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, on
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500 pb-20">
-      {/* 2. 上方配色與資訊欄位調整 */}
       <div className="bg-[#1e3a8a] text-white p-5 rounded-3xl shadow-xl shadow-blue-900/20 relative overflow-hidden">
-        {/* 背景裝飾 */}
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
         
         <h2 className="font-bold text-xl relative z-10 mb-1">{currentWorkOrder?.name}</h2>
@@ -48,13 +55,12 @@ export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, on
           {currentWorkOrder?.no}{currentWorkOrder?.subNo ? `-${currentWorkOrder.subNo}` : ''}
         </p>
         
-        {/* 總金額靠左，總數靠右 */}
         <div className="flex justify-between items-end relative z-10">
           <div>
              <p className="text-[10px] text-blue-300 uppercase tracking-wider mb-0.5">預估總金額</p>
              <p className="text-3xl font-bold text-white leading-none">
                <span className="text-lg mr-1">$</span>
-               {items.reduce((a:any, b:any) => a + (b.qty * b.price), 0).toLocaleString()}
+               {items.reduce((a, b) => a + (b.qty * b.price), 0).toLocaleString()}
              </p>
           </div>
           <div className="text-right">
@@ -69,24 +75,22 @@ export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, on
             {dbLoading ? <Loader2 className="animate-spin" size={14}/> : <RefreshCw size={14}/>} 
             更新資料庫 ({productCount})
          </button>
-         {/* 3. 綁定匯出功能 */}
          <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-green-700 shadow-sm hover:bg-green-50 whitespace-nowrap active:scale-95 transition-transform">
             <FileSpreadsheet size={16}/> 匯出 Excel
          </button>
       </div>
 
       <div className="space-y-3">
-        {items.map((item: any) => (
+        {items.map((item) => (
           <div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
-            {/* 4. 合併備註顯示在右上角 */}
             {item.remark && (
               <span className="absolute top-0 right-0 bg-purple-100 text-purple-700 text-[10px] px-2 py-1 rounded-bl-xl font-bold z-10">
                  {item.remark}
               </span>
             )}
             
-            <div className="flex justify-between items-start mt-2"> {/* mt-2 為了避開右上角標籤 */}
-               <div className="flex-1 min-w-0 pr-8"> {/* pr-8 避免文字蓋到刪除按鈕 */}
+            <div className="flex justify-between items-start mt-2">
+               <div className="flex-1 min-w-0 pr-8">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="bg-slate-100 text-slate-600 text-[10px] font-bold px-1.5 py-0.5 rounded font-mono">{item.no}</span>
                     <h3 className="font-bold text-slate-800 text-sm truncate">{item.name}</h3>
@@ -109,12 +113,10 @@ export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, on
         {items.length === 0 && <div className="text-center py-10 text-slate-400 text-sm">尚無項目，請點擊下方按鈕新增</div>}
       </div>
 
-      {/* 4. 合併按鈕 (漂浮) */}
       <button onClick={onMergeClick} className="fixed bottom-40 right-6 w-12 h-12 bg-purple-600 text-white rounded-full shadow-lg shadow-purple-600/40 flex items-center justify-center hover:bg-purple-700 active:scale-90 transition-all z-30" title="合併工令">
         <GitMerge size={20} />
       </button>
 
-      {/* 新增按鈕 */}
       <button onClick={onAddClick} className="fixed bottom-24 right-6 w-14 h-14 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-600/40 flex items-center justify-center hover:bg-blue-700 active:scale-90 transition-all z-30">
         <Plus size={28} />
       </button>
