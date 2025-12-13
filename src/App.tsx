@@ -282,28 +282,43 @@ export default function App() {
     return () => { unsubWO(); unsubItems(); };
   }, [user, currentWOId, currentWorkOrder]);
 
-  // 自動載入產品資料庫 (CSV)
+  // 自動載入產品資料庫 (增強版 CSV 解析：支援 Big5 與 UTF-8)
   const fetchProducts = async () => {
     setDbLoading(true);
     try {
-      // 1. 加入時間戳記避免快取
+      // 加入時間戳記避免快取
       const response = await fetch(`/products.csv?t=${Date.now()}`);
       
       if (!response.ok) {
-        console.error(`Fetch error: ${response.status} ${response.statusText}`);
-        // 若失敗，嘗試讀取不帶參數的 (某些 server 設定)
+        // 如果失敗，嘗試讀取不帶參數的
         const retry = await fetch('/products.csv');
-        if (!retry.ok) throw new Error("找不到資料庫檔案，請確認 public/products.csv 是否存在");
+        if (!retry.ok) throw new Error("找不到資料庫檔案 (404)");
       }
 
-      const text = await response.text();
-      console.log("CSV 檔案大小:", text.length);
+      // 取得原始二進位資料 (ArrayBuffer)，以便處理 Big5 編碼
+      const buffer = await response.arrayBuffer();
+      let text = '';
+      
+      // 嘗試用 UTF-8 解碼
+      const decoderUtf8 = new TextDecoder('utf-8');
+      text = decoderUtf8.decode(buffer);
 
-      // 2. 更強大的換行處理 (CRLF 或 LF)
+      // 檢查是否含有亂碼 (簡單判斷: 是否包含常見的亂碼符號或完全讀不到 '編號' 關鍵字)
+      // 如果 CSV 是 Big5，UTF-8 解碼後通常看不到中文字
+      if (!text.includes('編號') && !text.includes('名稱') && !text.includes('Y6')) {
+        console.log("偵測到可能的編碼問題，嘗試使用 Big5 解碼...");
+        try {
+          const decoderBig5 = new TextDecoder('big5');
+          text = decoderBig5.decode(buffer);
+        } catch (e) {
+          console.warn("Big5 解碼失敗，回退至 UTF-8");
+        }
+      }
+
       const lines = text.split(/\r\n|\n/);
       const newProducts: any[] = [];
       
-      // 3. 自動偵測標題列 (檢查是否包含 '編號')
+      // 自動偵測標題列
       let startIndex = 0;
       if (lines[0] && (lines[0].includes('編號') || lines[0].includes('no'))) {
         startIndex = 1;
@@ -313,14 +328,16 @@ export default function App() {
         const line = lines[i].trim();
         if (!line) continue;
         
-        // 簡單分割，若有更複雜的 CSV (如引號內有逗號)，需改用 regex 或 library
         const parts = line.split(',');
         
-        // 至少要有 3 個欄位 (編號, 名稱, 單價)
         if (parts.length >= 3) {
-          const no = parts[0].trim().replace(/^\uFEFF/, ''); // 去除 BOM
-          const name = parts[1].trim();
-          // 取最後一個欄位當作價格，並去除可能存在的引號或空白
+          const no = parts[0].trim().replace(/^\uFEFF/, '');
+          
+          // 處理名稱中可能含有逗號的情況：取中間所有部分當作名稱
+          // 例如: A01, "鋼管, 鍍鋅", 100
+          const nameParts = parts.slice(1, parts.length - 1);
+          const name = nameParts.join(',').trim().replace(/^"|"$/g, ''); // 移除前後引號
+          
           const priceStr = parts[parts.length - 1].trim().replace(/["\s,]/g, '');
           const price = parseFloat(priceStr) || 0;
           
@@ -333,9 +350,13 @@ export default function App() {
       console.log(`成功解析 ${newProducts.length} 筆資料`);
       setProducts(newProducts);
       
-    } catch (e) {
+      if (newProducts.length === 0) {
+         showAlert("讀取到檔案但內容為空，請檢查 CSV 編碼 (建議使用 UTF-8)", "error");
+      }
+
+    } catch (e: any) {
       console.error("載入產品資料庫失敗:", e);
-      showAlert("無法自動載入產品資料庫，請檢查檔案是否存在或格式是否正確", "error");
+      showAlert(`載入失敗: ${e.message}\n請確認 public/products.csv 檔案存在。`, "error");
     } finally {
       setDbLoading(false);
     }
@@ -479,9 +500,20 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
+    
+    // 手動匯入時，使用 ArrayBuffer 以便處理編碼
     reader.onload = (evt) => {
-        const text = evt.target?.result as string;
-        if(text) {
+        const buffer = evt.target?.result as ArrayBuffer;
+        if(buffer) {
+            let text = '';
+            // 先嘗試 UTF-8
+            try { text = new TextDecoder('utf-8').decode(buffer); } catch(e) {}
+            
+            // 偵測是否為 Big5
+            if (!text.includes('編號') && !text.includes('Y6')) {
+                try { text = new TextDecoder('big5').decode(buffer); } catch(e) {}
+            }
+
             const lines = text.split(/\r\n|\n/);
             const newProducts: any[] = [];
             const startIndex = (lines[0]?.includes('編號') || lines[0]?.includes('no')) ? 1 : 0;
@@ -490,9 +522,10 @@ export default function App() {
                 if (!line) continue;
                 const parts = line.split(',');
                 if (parts.length >= 3) {
+                    const nameParts = parts.slice(1, parts.length - 1);
                     newProducts.push({
                         no: parts[0].trim().replace(/^\uFEFF/, ''),
-                        name: parts[1].trim(),
+                        name: nameParts.join(',').trim().replace(/^"|"$/g, ''),
                         price: parseFloat(parts[parts.length - 1].trim()) || 0
                     });
                 }
@@ -502,7 +535,7 @@ export default function App() {
             setDbModalOpen(false);
         }
     };
-    reader.readAsText(file);
+    reader.readAsArrayBuffer(file);
   };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-blue-600"><Loader2 className="animate-spin" size={48} /></div>;
@@ -526,6 +559,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-[Microsoft JhengHei] pb-24 safe-area-bottom">
       
+      {/* 頂部 Header - 只放 Logo 與登出 */}
       {!isSigningMode && (
         <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-100 safe-area-top">
           <div className="flex justify-between items-center p-4">
@@ -549,7 +583,8 @@ export default function App() {
       )}
 
       <main className={`p-4 max-w-2xl mx-auto w-full transition-all duration-300 ${isSigningMode ? 'bg-white min-h-screen' : 'mb-20'}`}>
-        {/* ... Tab contents ... */}
+        
+        {/* Tab 1: 協議書 */}
         {activeTab === 'agreement' && (
           <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
              {!isSigningMode && !currentWOId && (
@@ -561,7 +596,7 @@ export default function App() {
                  <div className="bg-white/20 p-2 rounded-xl"><FileText size={24} /></div>
                </div>
              )}
-             {/* ... Agreement Content ... */}
+             
              {currentWorkOrder && !isSigningMode && (
                <div className="bg-blue-50 border border-blue-100 p-3 rounded-2xl flex justify-between items-center">
                  <div className="flex items-center gap-2">
@@ -574,13 +609,20 @@ export default function App() {
                  </div>
                </div>
              )}
-             {/* Agreement Form */}
+
              <div className={`bg-white rounded-3xl ${isSigningMode ? '' : 'shadow-sm border border-slate-100'} overflow-hidden`}>
                 {!isSigningMode && <div className="bg-slate-50 p-4 border-b border-slate-100 text-center text-slate-500 font-bold text-sm">工程委辦及開工工安協議書</div>}
+                
                 <div className="p-5 space-y-6">
                    <div className="grid gap-4">
-                     <div><label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">工令編號</label><input type="text" value={draftAgreement.woNo || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, woNo: e.target.value.toUpperCase()})} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="輸入編號..." /></div>
-                     <div><label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">工程名稱</label><input type="text" value={draftAgreement.woName || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, woName: e.target.value})} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="輸入名稱..." /></div>
+                     <div>
+                       <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">工令編號</label>
+                       <input type="text" value={draftAgreement.woNo || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, woNo: e.target.value.toUpperCase()})} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="輸入編號..." />
+                     </div>
+                     <div>
+                       <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">工程名稱</label>
+                       <input type="text" value={draftAgreement.woName || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, woName: e.target.value})} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 transition-all" placeholder="輸入名稱..." />
+                     </div>
                      <div>
                        <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">承包廠商</label>
                        <div className="relative">
@@ -592,26 +634,68 @@ export default function App() {
                        </div>
                      </div>
                    </div>
+
                    <hr className="border-slate-100"/>
-                   {/* Duration */}
+
+                   {/* --- 工程期限 --- */}
                    <div>
                       <h4 className="font-bold text-slate-800 mb-3 text-sm">工程期限</h4>
                       <div className="space-y-3">
                         <label className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${draftAgreement.durationOption === '1' ? 'border-blue-500 bg-blue-50/50' : 'border-transparent bg-slate-50'}`}>
                            <input type="radio" checked={draftAgreement.durationOption === '1'} disabled={!!currentWOId} onChange={() => setDraftAgreement({...draftAgreement, durationOption: '1'})} className="mt-1 w-4 h-4 text-blue-600" />
-                           <div className="text-sm text-slate-600 leading-relaxed">本工程施工期限為 <input type="number" value={draftAgreement.durationDays || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, durationDays: e.target.value})} onClick={e => e.stopPropagation()} className="w-10 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1 no-arrow"/> 工作天，需配合 <input type="text" value={draftAgreement.durationCoop || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, durationCoop: e.target.value})} onClick={e => e.stopPropagation()} className="w-16 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1"/> 施工。</div>
+                           <div className="text-sm text-slate-600 leading-relaxed">
+                              本工程施工期限為 
+                              <input type="number" 
+                                value={draftAgreement.durationDays || ''}
+                                readOnly={!!currentWOId}
+                                onChange={e => setDraftAgreement({...draftAgreement, durationDays: e.target.value})}
+                                onClick={e => e.stopPropagation()}
+                                className="w-10 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1 no-arrow"
+                              />
+                              工作天，需配合
+                              <input type="text" 
+                                value={draftAgreement.durationCoop || ''}
+                                readOnly={!!currentWOId}
+                                onChange={e => setDraftAgreement({...draftAgreement, durationCoop: e.target.value})}
+                                onClick={e => e.stopPropagation()}
+                                className="w-16 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1"
+                              />
+                              施工。
+                           </div>
                         </label>
                         <label className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${draftAgreement.durationOption === '2' ? 'border-blue-500 bg-blue-50/50' : 'border-transparent bg-slate-50'}`}>
                            <input type="radio" checked={draftAgreement.durationOption === '2'} disabled={!!currentWOId} onChange={() => setDraftAgreement({...draftAgreement, durationOption: '2'})} className="mt-1 w-4 h-4 text-blue-600" />
-                           <div className="text-sm text-slate-600 leading-relaxed">需配合施工，其施工期限為配合工程完成後於 <input type="number" value={draftAgreement.durationCalendarDays || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, durationCalendarDays: e.target.value})} onClick={e => e.stopPropagation()} className="w-10 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1 no-arrow"/> 日曆天內完成。</div>
+                           <div className="text-sm text-slate-600 leading-relaxed">
+                              需配合施工，其施工期限為配合工程完成後於 
+                              <input type="number" 
+                                value={draftAgreement.durationCalendarDays || ''}
+                                readOnly={!!currentWOId}
+                                onChange={e => setDraftAgreement({...draftAgreement, durationCalendarDays: e.target.value})}
+                                onClick={e => e.stopPropagation()}
+                                className="w-10 border-b-2 border-slate-300 text-center bg-transparent focus:border-blue-500 outline-none font-bold text-blue-600 mx-1 no-arrow"
+                              />
+                              日曆天內完成。
+                           </div>
                         </label>
                         <label className={`flex items-start gap-3 p-3 rounded-xl border-2 transition-all cursor-pointer ${draftAgreement.durationOption === '3' ? 'border-blue-500 bg-blue-50/50' : 'border-transparent bg-slate-50'}`}>
                            <input type="radio" checked={draftAgreement.durationOption === '3'} disabled={!!currentWOId} onChange={() => setDraftAgreement({...draftAgreement, durationOption: '3'})} className="mt-1 w-4 h-4 text-blue-600" />
-                           <div className="text-sm text-slate-600 leading-relaxed">本工程施工期限於 <input type="date" value={draftAgreement.durationDate || ''} readOnly={!!currentWOId} onChange={e => setDraftAgreement({...draftAgreement, durationDate: e.target.value})} onClick={e => e.stopPropagation()} className="border rounded px-1 bg-white text-xs ml-1"/> 完成。</div>
+                           <div className="text-sm text-slate-600 leading-relaxed">
+                              本工程施工期限於 
+                              <input type="date" 
+                                value={draftAgreement.durationDate || ''}
+                                readOnly={!!currentWOId}
+                                onChange={e => setDraftAgreement({...draftAgreement, durationDate: e.target.value})}
+                                onClick={e => e.stopPropagation()}
+                                className="border rounded px-1 bg-white text-xs ml-1"
+                              />
+                              完成。
+                           </div>
                         </label>
                       </div>
                    </div>
+
                    <hr className="border-slate-100"/>
+
                    {/* Safety Checks */}
                    <div className="rounded-2xl border border-slate-100 overflow-hidden">
                       <button onClick={() => setIsSafetyExpanded(!isSafetyExpanded)} className="w-full flex justify-between items-center p-4 bg-slate-50 hover:bg-slate-100 transition-colors">
@@ -629,6 +713,7 @@ export default function App() {
                         </div>
                       )}
                    </div>
+
                    {/* Signatures */}
                    <div>
                       <h4 className="font-bold text-slate-800 mb-3 text-sm">簽名確認</h4>
@@ -648,6 +733,7 @@ export default function App() {
                          ))}
                       </div>
                    </div>
+
                    {!currentWOId && (
                      <button onClick={handleCreateWOFromAgreement} className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 active:scale-95 transition-transform flex items-center justify-center gap-2">
                        <FileSignature size={20} /> 建立工令並存檔

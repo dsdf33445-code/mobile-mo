@@ -12,7 +12,7 @@ git add .
 
 2.提交修改並寫下備註 (引號內的文字可以隨意寫，例如 "新增刪除功能" 或 "修正錯字")
 
-git commit -m "update app"
+git commit -m "11:50"
 
 3.推送到雲端
 
