@@ -1,0 +1,36 @@
+{
+      "name": "行動版 MO",
+      "short_name": "MO系統",
+      "start_url": "/",
+      "display": "standalone",
+      "background_color": "#ffffff",
+      "theme_color": "#2563eb",
+      "icons": [
+        {
+          "src": "/icon-192.png",
+          "type": "image/png",
+          "sizes": "192x192"
+        },
+        {
+          "src": "/icon-512.png",
+          "type": "image/png",
+          "sizes": "512x512"
+        }
+      ]
+    }
+    ```
+
+    > **注意**：你需要找一張圖片當 Logo，命名為 `icon-192.png` 和 `icon-512.png` 放入 `public` 資料夾。
+
+2.  **修改 index.html**：
+    在 `index.html` 的 `<head>` 區塊加入以下內容，這對手機體驗至關重要：
+
+    ```html
+    <!-- 禁止縮放，確保像 Native App -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <!-- 指定 Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    <!-- iOS 專用設定 -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="apple-touch-icon" href="/icon-192.png">
