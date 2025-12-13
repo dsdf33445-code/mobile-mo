@@ -16,31 +16,51 @@ export default function MoDetailView({
   currentWorkOrder, items, onDeleteItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount 
 }: Props) {
   
+  // 修改：改為匯出包含分頁設定的 .xls 格式 (HTML based Excel)
   const handleExport = () => {
     if (!items || items.length === 0) return;
     
     const headers = ['項目編號(*必填)', '項目名稱(可不填寫)', '數量(*必填)', '倍率(*必填)', '加成(*必填)', '備註(可不填寫)'];
     
-    const rows = items.map((item) => [
-      item.no,
-      `"${item.name}"`, 
-      item.qty,
-      '1.0', 
-      '1.0', 
-      ''     
-    ]);
+    // 1. 構建 HTML Table 內容
+    let tableHtml = '<table><thead><tr>';
+    headers.forEach(h => {
+        tableHtml += `<th>${h}</th>`;
+    });
+    tableHtml += '</tr></thead><tbody>';
 
-    // 修正此處變數名稱
-    const csvContent = [
-      headers.join(','), 
-      ...rows.map((r) => r.join(','))
-    ].join('\n');
+    items.forEach((item) => {
+      tableHtml += '<tr>';
+      // mso-number-format:'\@' 強制 Excel 將此欄位視為文字，避免 001 被轉成 1
+      tableHtml += `<td style="mso-number-format:'\\@'">${item.no}</td>`;
+      tableHtml += `<td>${item.name}</td>`;
+      tableHtml += `<td>${item.qty}</td>`;
+      tableHtml += `<td>1.0</td>`;
+      tableHtml += `<td>1.0</td>`;
+      tableHtml += `<td></td>`; // 備註空白
+      tableHtml += '</tr>';
+    });
+    tableHtml += '</tbody></table>';
+
+    // 2. 組合 Excel XML 模板 (為了設定分頁名稱為 ITEM)
+    const excelTemplate = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
+        </head>
+      <body>
+        ${tableHtml}
+      </body>
+      </html>
+    `;
     
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    // 3. 建立 Blob 並下載
+    const blob = new Blob([excelTemplate], { type: 'application/vnd.ms-excel' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `${currentWorkOrder?.no || 'export'}_ITEM.csv`);
+    // 副檔名改為 .xls
+    link.setAttribute('download', `${currentWorkOrder?.no || 'export'}_ITEM.xls`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
