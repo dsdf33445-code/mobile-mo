@@ -15,10 +15,9 @@ import {
   type QuerySnapshot, 
   type DocumentSnapshot 
 } from 'firebase/firestore';
-// 修正：移除未使用的 Maximize, Link
 import { 
   FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, LogOut, Loader2, User as UserIcon, 
-  GitMerge, CheckSquare, Square 
+  GitMerge, CheckSquare, Square, Maximize, Link 
 } from 'lucide-react';
 
 import { auth, db, provider } from './firebase';
@@ -114,7 +113,6 @@ export default function App() {
        return onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => s.exists() && setDraftAgreement(s.data()));
     }
 
-    // 修正：為 onSnapshot 的 callback 加上型別註解
     const unsubWO = onSnapshot(query(collection(db, 'artifacts', 'mobile-mo', 'users', uid, 'workOrders'), orderBy('createdAt', 'desc')), (s: QuerySnapshot) => setWorkOrders(s.docs.map(d => ({id:d.id, ...d.data()}))));
     const unsubItems = onSnapshot(query(collection(db, 'artifacts', 'mobile-mo', 'users', uid, 'items')), (s: QuerySnapshot) => setItems(s.docs.map(d => ({id:d.id, ...d.data()}))));
     
@@ -122,8 +120,14 @@ export default function App() {
     if (currentWOId) {
        unsubAgree = onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => {
          if(s.exists()) setDraftAgreement(s.data());
-         else if (!sharedOwnerId) setDraftAgreement({ woNo: currentWorkOrder?.no || '', woName: currentWorkOrder?.name || '', contractor: currentWorkOrder?.applicant || '', durationOption: '1', safetyChecks: [], signatures: {} });
+         else if (!sharedOwnerId) {
+           // 3. 點擊新增工令時，要顯示空白協議書 (確保資料被重置)
+           setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
+         }
        });
+    } else {
+        // 確保當沒有 currentWOId 時，草稿也是空的
+        if(!sharedOwnerId) setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
     }
     return () => { unsubWO(); unsubItems(); unsubAgree(); };
   }, [user, currentWOId, sharedOwnerId, currentWorkOrder]);
@@ -133,7 +137,9 @@ export default function App() {
   const handleLogout = () => signOut(auth);
   
   const handleUpdateAgreement = (field: string, value: any) => {
+    // 1. 工令編號限制：8碼、大寫、英數字
     if (field === 'woNo') value = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+    
     const newState = { ...draftAgreement, [field]: value };
     setDraftAgreement(newState);
     if(user && currentWOId && !sharedOwnerId) setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid, 'agreements', currentWOId), newState, {merge:true});
@@ -160,7 +166,6 @@ export default function App() {
     if(!uid || !currentWOId) return;
     const newSigs = { ...draftAgreement.signatures, [roleId]: { ...draftAgreement.signatures[roleId], date } };
     setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), { signatures: newSigs }, {merge:true});
-    setSigningRole(null);
   };
 
   const handleShare = async () => {
@@ -238,6 +243,16 @@ export default function App() {
     }});
   };
 
+  // 4. 狀態顏色輔助函式
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'MO': return 'bg-purple-100 text-purple-600 border-purple-200';
+      case '已完工': return 'bg-green-100 text-green-600 border-green-200';
+      case '已結案': return 'bg-gray-100 text-gray-500 border-gray-200';
+      default: return 'bg-blue-100 text-blue-600 border-blue-200';
+    }
+  };
+
   if (loading) return <div className="min-h-screen flex items-center justify-center text-blue-600"><Loader2 className="animate-spin" size={48}/></div>;
   if (!user && !sharedOwnerId) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-blue-600 p-6">
@@ -278,13 +293,15 @@ export default function App() {
           />
         )}
         {activeTab === 'wo' && (
+          // 傳遞 getStatusColor 給列表元件
           <WorkOrderListView 
             workOrders={workOrders} 
             onSelect={(wo:any) => { setCurrentWOId(wo.id); setActiveTab('mo'); }}
             onEdit={(wo:any) => { setWoModal({isOpen:true, data:wo}); }}
             onDelete={(id:string) => handleDelete('workOrders', id)}
-            onAdd={() => { setCurrentWOId(null); setActiveTab('agreement'); }}
+            onAdd={() => { setCurrentWOId(null); setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} }); setActiveTab('agreement'); }}
             onCheckAgreement={(id:string) => { setCurrentWOId(id); setActiveTab('agreement'); }}
+            getStatusColor={getStatusColor}
           />
         )}
         {activeTab === 'mo' && (
@@ -294,7 +311,7 @@ export default function App() {
             onAddClick={() => { setItemModal({isOpen:true, data:{no:'', name:'', qty:'', price:0}}); setShowSuggestions(false); }}
             onReloadDb={fetchProducts}
             onMergeClick={() => setMergeModal({ isOpen: true, selectedIds: [] })}
-            // 修正：不傳遞 unused prop
+            onExcelExport={() => {}} 
           />
         )}
       </main>
@@ -309,7 +326,11 @@ export default function App() {
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
               <h3 className="font-bold text-lg mb-4">編輯工令</h3>
               <div className="space-y-4">
-                 <div><label className="text-xs font-bold text-gray-500 block mb-1">工令編號</label><input type="text" value={woModal.data.no} onChange={e => setWoModal({...woModal, data:{...woModal.data, no:e.target.value.toUpperCase()}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold" /></div>
+                 <div>
+                    <label className="text-xs font-bold text-gray-500 block mb-1">工令編號</label>
+                    {/* 1. 編輯工令：編號限制8碼、自動大寫 */}
+                    <input type="text" maxLength={8} value={woModal.data.no} onChange={e => setWoModal({...woModal, data:{...woModal.data, no:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold font-mono" />
+                 </div>
                  <div><label className="text-xs font-bold text-gray-500 block mb-1">工程名稱</label><input type="text" value={woModal.data.name} onChange={e => setWoModal({...woModal, data:{...woModal.data, name:e.target.value}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold" /></div>
                  <div><label className="text-xs font-bold text-gray-500 block mb-1">狀態</label><select value={woModal.data.status} onChange={e => setWoModal({...woModal, data:{...woModal.data, status:e.target.value}})} className="w-full border p-3 rounded-xl"><option>接收工令</option><option>MO</option><option>已完工</option><option>已結案</option></select></div>
                  {woModal.data.status==='MO' && <div><label className="text-xs text-blue-500 font-bold block mb-1">分工令 (必填)</label><input type="text" maxLength={2} value={woModal.data.subNo||''} onChange={e => setWoModal({...woModal, data:{...woModal.data, subNo:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'')}})} className="w-full border-2 border-blue-200 p-3 rounded-xl font-mono font-bold text-center text-xl" /></div>}

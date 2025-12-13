@@ -1,26 +1,25 @@
 import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2, GitMerge } from 'lucide-react';
 
-// 修正：移除未使用的 onExcelExport
-export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount }: any) {
+export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, onAddClick, onExcelExport, onReloadDb, onMergeClick, dbLoading, productCount }: any) {
   
-  // 實作簡易 Excel (CSV) 匯出功能
+  // 實作簡易 Excel (CSV) 匯出功能 - 格式更新 (SampleXG.xls)
   const handleExport = () => {
     if (!items || items.length === 0) return;
     
-    // 定義 CSV 標頭
-    const headers = ['項目編號', '項目名稱', '單價', '數量', '小計', '備註'];
+    // 定義 CSV 標頭 (符合上傳檔案格式)
+    const headers = ['項目編號(*必填)', '項目名稱(可不填寫)', '數量(*必填)', '倍率(*必填)', '加成(*必填)', '備註(可不填寫)'];
     
     // 轉換資料列
     const rows = items.map((item: any) => [
       item.no,
-      `"${item.name}"`, // 避免名稱中有逗號導致格式跑掉
-      item.price,
+      `"${item.name}"`, 
       item.qty,
-      item.price * item.qty,
-      `"${item.remark || ''}"`
+      '1.0', // 倍率自動帶入 1.0
+      '1.0', // 加成自動帶入 1.0
+      ''     // 備註空白
     ]);
 
-    // 組合 CSV 內容 (加上 BOM \uFEFF 以支援 Excel 中文顯示)
+    // 組合 CSV 內容 (加上 BOM \uFEFF)
     const csvContent = [
       headers.join(','), 
       ...rows.map((r: any[]) => r.join(','))
@@ -30,7 +29,7 @@ export default function MoDetailView({ currentWorkOrder, items, onDeleteItem, on
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `${currentWorkOrder?.no || 'export'}_MO明細.csv`);
+    link.setAttribute('download', `${currentWorkOrder?.no || 'export'}_ITEM.csv`); // 檔名後綴改為 _ITEM.csv
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
