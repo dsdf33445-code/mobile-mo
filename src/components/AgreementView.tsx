@@ -123,7 +123,8 @@ export default function AgreementView({
                   </div>
                   {data.signatures?.[role.id] ? (
                     <div className="flex flex-col items-center">
-                      <img src={data.signatures[role.id]!.img} alt="簽名" className="h-16 object-contain mix-blend-multiply" />
+                      {/* 修正：將 h-16 改為 h-32，放大簽名顯示區域 */}
+                      <img src={data.signatures[role.id]!.img} alt="簽名" className="h-32 object-contain mix-blend-multiply" />
                       <input type="date" value={data.signatures[role.id]!.date} onClick={e => e.stopPropagation()} onChange={e => onDateChange(role.id, e.target.value)} className="text-xs border rounded px-1 mt-1 text-gray-500 print:border-0 print:text-black" />
                     </div>
                   ) : (
