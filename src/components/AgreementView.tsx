@@ -1,57 +1,53 @@
 import { useState } from 'react';
-// 修正：移除未使用的 Link
-import { ChevronDown, ChevronUp, X, PenTool, FileText, Maximize, FileSignature, Send, Printer } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, PenTool, FileText, FileSignature, Send, Printer } from 'lucide-react';
 import { CONTRACTOR_OPTIONS, SAFETY_CHECK_ITEMS, SIGNATURE_ROLES } from '../constants';
 
 export default function AgreementView({ 
-  data, currentWOId, isSigningMode, isShared, 
-  onChange, onToggleSafety, onSigning, onClearSignature, onDateChange, onCreate, onTransfer, onExitSigning 
+  data, currentWOId, isShared, 
+  onChange, onToggleSafety, onSigning, onClearSignature, onDateChange, onCreate, onTransfer
 }: any) {
   const [isSafetyExpanded, setIsSafetyExpanded] = useState(false);
   
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      {/* 建立新協議書標題 */}
-      {!isSigningMode && !currentWOId && !isShared && (
+      {!currentWOId && !isShared && (
         <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-4 rounded-2xl shadow-lg flex justify-between no-print">
           <div><h2 className="font-bold text-lg">建立新協議書</h2><p className="text-blue-100 text-xs mt-1">填寫下方資料後建立工令</p></div>
           <div className="bg-white/20 p-2 rounded-xl"><FileText size={24} /></div>
         </div>
       )}
       
-      {/* 查案狀態 Bar */}
-      {currentWOId && !isSigningMode && (
+      {currentWOId && (
         <div className="bg-blue-50 border border-blue-100 p-3 rounded-2xl flex justify-between items-center no-print">
           <div className="flex items-center gap-2">
             <span className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-lg">查案中</span>
             <span className="font-bold text-blue-900">{data.woNo}</span>
           </div>
           <div className="flex gap-2">
-             {/* 3. 轉交按鈕 */}
             <button onClick={onTransfer} className="p-2 text-blue-600 bg-white rounded-full shadow-sm active:scale-95" title="轉交"><Send size={18}/></button>
-             {/* 5. 列印按鈕 */}
             <button onClick={() => window.print()} className="p-2 text-blue-600 bg-white rounded-full shadow-sm active:scale-95" title="列印 PDF"><Printer size={18}/></button>
-            <button onClick={() => onExitSigning(true)} className="p-2 text-blue-600 bg-white rounded-full shadow-sm active:scale-95"><Maximize size={18}/></button>
           </div>
         </div>
       )}
 
-      <div className={`bg-white rounded-3xl ${isSigningMode ? '' : 'shadow-sm border border-slate-100'} overflow-hidden`}>
-        {!isSigningMode && <div className="bg-slate-50 p-4 border-b text-center text-slate-500 font-bold text-sm">工程委辦及開工工安協議書</div>}
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="bg-slate-50 p-4 border-b text-center text-slate-500 font-bold text-sm">工程委辦及開工工安協議書</div>
         <div className="p-5 space-y-6">
           <div className="grid gap-4">
             <div>
               <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">工令編號 (8碼英數)</label>
-              <input type="text" value={data.woNo || ''} readOnly={!!currentWOId} onChange={e => onChange('woNo', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 font-mono uppercase" placeholder="例如: Y6N10001" maxLength={8} />
+              {/* 2. 修正：允許編輯工令編號 */}
+              <input type="text" value={data.woNo || ''} onChange={e => onChange('woNo', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 font-mono uppercase" placeholder="例如: Y6N10001" maxLength={8} />
             </div>
             <div>
               <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">工程名稱</label>
-              <input type="text" value={data.woName || ''} readOnly={!!currentWOId} onChange={e => onChange('woName', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500" placeholder="輸入名稱..." />
+              <input type="text" value={data.woName || ''} onChange={e => onChange('woName', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500" placeholder="輸入名稱..." />
             </div>
             <div>
               <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block">承包廠商</label>
               <div className="relative">
-                <select value={data.contractor || ''} disabled={!!currentWOId} onChange={e => onChange('contractor', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 appearance-none">
+                {/* 2. 修正：移除 disabled，隨時可選廠商 */}
+                <select value={data.contractor || ''} onChange={e => onChange('contractor', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 appearance-none">
                   <option value="" disabled>請選擇...</option>
                   {CONTRACTOR_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
@@ -83,17 +79,17 @@ export default function AgreementView({
               <span className="font-bold text-slate-700 text-sm">施工前安全確認事項 ({data.safetyChecks?.length || 0}/20)</span>
               {isSafetyExpanded ? <ChevronUp size={18}/> : <ChevronDown size={18}/>}
             </button>
-            {(isSafetyExpanded || isSigningMode) && (
-              <div className="p-2 bg-white max-h-96 overflow-y-auto">
+            {(isSafetyExpanded || true) && ( // 修正：預設展開或允許展開，不依賴 SigningMode
+              <div className={`p-2 bg-white max-h-96 overflow-y-auto ${isSafetyExpanded ? '' : 'hidden'}`}>
                 {SAFETY_CHECK_ITEMS.map((item, idx) => (
                   <label key={idx} className="flex gap-3 p-3 hover:bg-slate-50 rounded-lg cursor-pointer">
-                    <input type="checkbox" checked={(data.safetyChecks || []).includes(idx)} disabled={!!currentWOId && !isSigningMode} onChange={() => onToggleSafety(idx)} className="mt-1 w-5 h-5 rounded border-gray-300 text-blue-600" />
+                    {/* 2. 修正：移除 disabled，隨時可勾選 */}
+                    <input type="checkbox" checked={(data.safetyChecks || []).includes(idx)} onChange={() => onToggleSafety(idx)} className="mt-1 w-5 h-5 rounded border-gray-300 text-blue-600" />
                     <span className="text-sm text-slate-600 leading-relaxed">{item}</span>
                   </label>
                 ))}
               </div>
             )}
-            {/* 列印時只顯示已勾選的項目 */}
             <div className="hidden print-only p-4">
                  <h4 className="font-bold mb-2">安全確認事項：</h4>
                  {SAFETY_CHECK_ITEMS.filter((_, i) => (data.safetyChecks || []).includes(i)).map(item => (

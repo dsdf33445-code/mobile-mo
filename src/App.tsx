@@ -15,9 +15,8 @@ import {
   type QuerySnapshot, 
   type DocumentSnapshot 
 } from 'firebase/firestore';
-// 修正：移除未使用的 Maximize, Link
 import { 
-  FileSpreadsheet, X, AlertTriangle, CheckCircle2, PenTool, LogOut, Loader2, User as UserIcon, 
+  FileSpreadsheet, X, AlertTriangle, CheckCircle2, LogOut, Loader2, User as UserIcon, 
   GitMerge, CheckSquare, Square, Send 
 } from 'lucide-react';
 
@@ -31,9 +30,8 @@ import BottomNavigation from './components/BottomNavigation';
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  // 1. 修改：預設進入工令管理
+  // 1. 修改：預設進入工令管理 ('wo')
   const [activeTab, setActiveTab] = useState<'agreement' | 'wo' | 'mo'>('wo');
-  const [isSigningMode, setIsSigningMode] = useState(false);
   
   // Data
   const [workOrders, setWorkOrders] = useState<any[]>([]);
@@ -49,7 +47,6 @@ export default function App() {
   const [woModal, setWoModal] = useState<any>({ isOpen: false, data: null });
   const [itemModal, setItemModal] = useState<any>({ isOpen: false, data: null });
   const [mergeModal, setMergeModal] = useState<any>({ isOpen: false, selectedIds: [] });
-  // 新增：轉交對象輸入框 (簡單版)
   const [transferModal, setTransferModal] = useState<any>({ isOpen: false, targetEmail: '' });
   
   const [signingRole, setSigningRole] = useState<any>(null);
@@ -133,7 +130,7 @@ export default function App() {
        unsubAgree = onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => {
          if(s.exists()) setDraftAgreement(s.data());
          else if (!sharedOwnerId) {
-           // 若無協議書資料，使用工令資料預填
+            // 2. 修正：查案時若無協議書，使用工令資料預填，並允許編輯
            const wo = workOrders.find(w => w.id === currentWOId);
            setDraftAgreement({ 
                woNo: wo?.no || '', 
@@ -160,10 +157,17 @@ export default function App() {
     const newState = { ...draftAgreement, [field]: value };
     setDraftAgreement(newState);
     if(user && currentWOId && !sharedOwnerId) setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid, 'agreements', currentWOId), newState, {merge:true});
+    
+    // 如果修改了協議書上的工令編號/名稱，同步回工令列表
+    if ((field === 'woNo' || field === 'woName') && currentWOId && user) {
+        const updateData = field === 'woNo' ? { no: value } : { name: value };
+        setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid, 'workOrders', currentWOId), updateData, {merge: true});
+    }
   };
 
   const handleToggleSafety = (idx: number) => {
-    if(currentWOId && !isSigningMode) return;
+    // 2. 修正：只要有 currentWOId (無論是否為簽署模式) 都可以勾選
+    if(!currentWOId && !sharedOwnerId) return; 
     const checks = draftAgreement.safetyChecks || [];
     const newChecks = checks.includes(idx) ? checks.filter((i:number)=>i!==idx) : [...checks, idx];
     handleUpdateAgreement('safetyChecks', newChecks);
@@ -187,7 +191,6 @@ export default function App() {
   };
 
   const handleCreateWO = async () => {
-    // 此函式保留給 "協議書 -> 建立工令" 的舊流程，但在新流程中較少用到
     if(!draftAgreement.woNo || !draftAgreement.woName || !draftAgreement.contractor) return setDialog({isOpen:true, type:'error', message:'請填寫完整'});
     if(!user) return;
     const id = doc(collection(db, 'dummy')).id;
@@ -197,34 +200,41 @@ export default function App() {
     setCurrentWOId(id); setActiveTab('wo'); setDialog({isOpen:true, type:'alert', message:'建立成功'});
   };
 
-  // 2. 新增/編輯工令：包含工令編號與名稱，儲存後跳轉
   const handleSaveWO = async () => {
     if(!woModal.data.no || !woModal.data.name) return;
     if(woModal.data.status==='MO' && (!woModal.data.subNo || woModal.data.subNo.length<2)) return setDialog({isOpen:true, type:'error', message:'MO 狀態需填寫分工令'});
     
     const isNew = !woModal.data.id;
-    const id = woModal.data.id || doc(collection(db, 'dummy')).id; // 若是新增則產生新ID
+    const id = woModal.data.id || doc(collection(db, 'dummy')).id;
     
-    // 儲存工令
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { 
       ...woModal.data, 
-      id: id, // 確保 ID 寫入
+      id: id,
       updatedAt: serverTimestamp(),
       createdAt: woModal.data.createdAt || serverTimestamp()
     }, {merge:true});
 
-    // 同步更新協議書
-    await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), {
-      woNo: woModal.data.no,
-      woName: woModal.data.name
-    }, {merge: true});
+    // 若是新增工令，建立基本協議書但不跳轉
+    if (isNew) {
+        await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), {
+            woNo: woModal.data.no,
+            woName: woModal.data.name,
+            contractor: '',
+            durationOption: '1',
+            safetyChecks: [],
+            signatures: {}
+        });
+        // 1. 修正：新增後保留在工令頁面，不跳轉
+        setDialog({isOpen:true, type:'success', message: '工令建立成功！'});
+    } else {
+        await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), {
+            woNo: woModal.data.no,
+            woName: woModal.data.name
+        }, {merge: true});
+        setDialog({isOpen:true, type:'success', message: '工令更新成功'});
+    }
 
     setWoModal({isOpen:false, data:null});
-    
-    // 儲存後自動選取並跳轉到協議書
-    setCurrentWOId(id);
-    setActiveTab('agreement'); 
-    setDialog({isOpen:true, type:'success', message: isNew ? '工令建立成功！請繼續填寫協議書' : '工令更新成功'});
   };
 
   const handleSaveItem = async () => {
@@ -265,9 +275,7 @@ export default function App() {
     }
   };
 
-  // 4. 轉交協議書 (模擬)
   const handleTransfer = async () => {
-     // 實際應用需實作搜尋 User ID 邏輯，這裡簡化為提示
      setDialog({isOpen:true, type:'success', message: `已將協議書轉交給：${transferModal.targetEmail} (模擬)`});
      setTransferModal({isOpen:false, targetEmail:''});
   };
@@ -282,7 +290,6 @@ export default function App() {
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-blue-600"><Loader2 className="animate-spin" size={48}/></div>;
   
-  // 1. 登入畫面優化
   if (!user && !sharedOwnerId) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 p-6">
       <div className="bg-white p-8 rounded-3xl w-full max-w-sm text-center shadow-2xl animate-in zoom-in-95 duration-500">
@@ -300,41 +307,30 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-[Microsoft JhengHei] pb-24 safe-area-bottom">
-      {!isSigningMode && (
-        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b p-4 flex justify-between safe-area-top">
-          <div className="flex items-center gap-2 font-bold text-lg text-slate-800"><FileSpreadsheet size={18}/> 行動版 MO</div>
-          <div className="flex items-center gap-2">
-            {sharedOwnerId && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">訪客</span>}
-            {/* 1. 顯示使用者名稱 */}
-            {user && (
-                <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full">
-                    {user.photoURL ? <img src={user.photoURL} alt="user" className="w-5 h-5 rounded-full" /> : <UserIcon size={14} />}
-                    <span className="text-xs font-bold text-slate-700">{user.displayName || user.email?.split('@')[0]}</span>
-                </div>
-            )}
-            {user && <button onClick={handleLogout}><LogOut size={18} className="text-slate-400"/></button>}
-          </div>
-        </header>
-      )}
-
-      {isSigningMode && (
-        <div className="sticky top-0 z-40 bg-slate-900 text-white p-4 flex justify-between safe-area-top shadow-lg">
-           <span className="font-bold flex gap-2"><PenTool size={18}/> 現場簽署</span>
-           <button onClick={() => setIsSigningMode(false)} className="bg-slate-700 px-3 py-1 rounded text-xs">退出</button>
+      {/* 3. 移除：isSigningMode 的判斷與切換按鈕，直接顯示 Header */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b p-4 flex justify-between safe-area-top">
+        <div className="flex items-center gap-2 font-bold text-lg text-slate-800"><FileSpreadsheet size={18}/> 行動版 MO</div>
+        <div className="flex items-center gap-2">
+          {sharedOwnerId && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">訪客</span>}
+          {user && (
+              <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full">
+                  {user.photoURL ? <img src={user.photoURL} alt="user" className="w-5 h-5 rounded-full" /> : <UserIcon size={14} />}
+                  <span className="text-xs font-bold text-slate-700">{user.displayName || user.email?.split('@')[0]}</span>
+              </div>
+          )}
+          {user && <button onClick={handleLogout}><LogOut size={18} className="text-slate-400"/></button>}
         </div>
-      )}
+      </header>
 
-      <main className={`p-4 max-w-2xl mx-auto ${isSigningMode ? 'bg-white min-h-screen' : 'mb-20'}`}>
+      <main className="p-4 max-w-2xl mx-auto mb-20">
         {activeTab === 'agreement' && (
           <AgreementView 
-            data={draftAgreement} currentWOId={currentWOId} isSigningMode={isSigningMode} isShared={!!sharedOwnerId}
+            data={draftAgreement} currentWOId={currentWOId} isShared={!!sharedOwnerId}
             onChange={handleUpdateAgreement} onToggleSafety={handleToggleSafety}
             onSigning={setSigningRole} onClearSignature={(rid:string) => handleUpdateAgreement('signatures', {...draftAgreement.signatures, [rid]: null})}
             onDateChange={handleSignatureDateChange} 
             onCreate={handleCreateWO} 
-            // 傳入轉交功能
             onTransfer={() => setTransferModal({isOpen:true, targetEmail:''})}
-            onExitSigning={setIsSigningMode}
           />
         )}
         {activeTab === 'wo' && (
@@ -343,7 +339,6 @@ export default function App() {
             onSelect={(wo:any) => { setCurrentWOId(wo.id); setActiveTab('mo'); }}
             onEdit={(wo:any) => { setWoModal({isOpen:true, data:wo}); }}
             onDelete={(id:string) => handleDelete('workOrders', id)}
-            // 2. 點擊新增按鈕：開啟 Modal 填寫資料
             onAdd={() => { setWoModal({isOpen:true, data:{no:'', name:'', status:'接收工令'}}); }}
             onCheckAgreement={(id:string) => { setCurrentWOId(id); setActiveTab('agreement'); }}
           />
@@ -359,7 +354,7 @@ export default function App() {
         )}
       </main>
 
-      {!isSigningMode && <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} onMoClick={() => { if(!currentWOId) return setDialog({isOpen:true, type:'alert', message:'請先選擇工令'}); setActiveTab('mo'); }} />}
+      <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} onMoClick={() => { if(!currentWOId) return setDialog({isOpen:true, type:'alert', message:'請先選擇工令'}); setActiveTab('mo'); }} />
 
       {signingRole && <SignaturePad title={signingRole.label} onSave={handleSignatureSave} onClose={() => setSigningRole(null)} />}
       
@@ -381,7 +376,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 4. 轉交視窗 */}
+      {/* 轉交視窗 */}
       {transferModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
@@ -420,7 +415,7 @@ export default function App() {
         </div>
       )}
 
-      {/* 1. Item Modal: 新增標籤 (Label) */}
+      {/* Item Modal */}
       {itemModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-xl animate-in slide-in-from-bottom-10">
