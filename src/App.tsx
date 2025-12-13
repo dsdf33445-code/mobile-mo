@@ -26,8 +26,8 @@ import {
   Database, Upload, 
   PenTool, ChevronDown, ChevronUp, Eraser, 
   Maximize, LogOut, Loader2,
-  FileText, ClipboardList, User as UserIcon, RefreshCw,
-  LayoutList
+  FileText, ClipboardList, User as UserIcon, 
+  RefreshCw, LayoutList, Share2, FileSignature // 修正：補上 Share2, FileSignature
 } from 'lucide-react';
 
 // ------------------------------------------------------------------
@@ -43,7 +43,6 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID
 };
 
-// 防止重複初始化
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
@@ -287,13 +286,11 @@ export default function App() {
   const fetchProducts = async () => {
     setDbLoading(true);
     try {
-      // ⚠️ 這裡很重要：檔名必須完全匹配
       const response = await fetch('/products.csv');
       if (!response.ok) throw new Error("找不到資料庫檔案");
       const text = await response.text();
       const lines = text.split('\n');
       const newProducts: any[] = [];
-      
       const startIndex = lines[0]?.includes('編號') ? 1 : 0;
 
       for (let i = startIndex; i < lines.length; i++) {
@@ -345,6 +342,33 @@ export default function App() {
 
   const showConfirm = (message: string, onConfirm: () => void) => {
     setDialog({ isOpen: true, type: 'confirm', message, onConfirm });
+  };
+
+  // 修正：補回 handleShare 函式
+  const handleShare = async () => {
+    if (!draftAgreement.woNo) {
+      showAlert("請先選擇或建立工令", 'error');
+      return;
+    }
+    const text = `【開工簽署通知】\n工令編號：${draftAgreement.woNo}\n工程名稱：${draftAgreement.woName}\n\n請承辦廠商「${draftAgreement.contractor}」負責人/安衛人員 進行確認並簽署開工協議書。\n(此為系統自動通知)`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: '開工協議書簽署通知',
+          text: text,
+        });
+      } catch (err) {
+        console.log('Share canceled');
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(text);
+        showAlert("已複製通知訊息，請貼上至 Line 或 Email", 'success');
+      } catch (err) {
+        showAlert("複製失敗，請手動複製", 'error');
+      }
+    }
   };
 
   const saveAgreement = async (newData: any) => {
@@ -523,7 +547,7 @@ export default function App() {
                     <span className="font-bold text-blue-900">{currentWorkOrder.no}</span>
                  </div>
                  <div className="flex gap-2">
-                   <button onClick={() => {}} className="p-2 text-blue-600 bg-white rounded-full shadow-sm hover:shadow active:scale-95"><Share2 size={18} /></button>
+                   <button onClick={handleShare} className="p-2 text-blue-600 bg-white rounded-full shadow-sm hover:shadow active:scale-95"><Share2 size={18} /></button>
                    <button onClick={() => setIsSigningMode(true)} className="p-2 text-blue-600 bg-white rounded-full shadow-sm hover:shadow active:scale-95"><Maximize size={18} /></button>
                  </div>
                </div>
@@ -827,7 +851,14 @@ export default function App() {
                <h3 className="font-bold text-xl mb-2 text-slate-800">產品資料庫</h3>
                <p className="text-slate-400 text-sm mb-6">目前共有 {products.length} 筆資料</p>
                <label className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 cursor-pointer hover:bg-blue-700 active:scale-95 transition-transform mb-3"><Upload size={20} /> 匯入 Excel 檔案<input type="file" accept=".xlsx" className="hidden" onChange={handleExcelImport} /></label>
-               <button onClick={() => setDbModalOpen(false)} className="w-full py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl">關閉</button>
+               
+               {/* 修正：加入重新載入按鈕 */}
+               <div className="flex gap-2 mt-2">
+                  <button onClick={fetchProducts} disabled={dbLoading} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 hover:bg-blue-700 active:scale-95 transition-transform">
+                     {dbLoading ? <Loader2 className="animate-spin" size={20}/> : <RefreshCw size={20}/>} 重新載入
+                  </button>
+                  <button onClick={() => setDbModalOpen(false)} className="flex-1 py-3 text-slate-400 font-bold hover:bg-slate-50 rounded-xl">關閉</button>
+               </div>
             </div>
          </div>
       )}
