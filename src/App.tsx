@@ -27,14 +27,14 @@ import AgreementView from './components/AgreementView';
 import WorkOrderListView from './components/WorkOrderListView';
 import MoDetailView from './components/MoDetailView';
 import BottomNavigation from './components/BottomNavigation';
-import type { WorkOrder, WorkOrderItem, Product, Agreement, SigningRole } from './types';
+import type { WorkOrder, WorkOrderItem, Product, Agreement, SigningRole, UserProfile } from './types';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'agreement' | 'wo' | 'mo'>('wo');
   
-  // Data State with Types
+  // Data State
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
   const [items, setItems] = useState<WorkOrderItem[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -42,13 +42,16 @@ export default function App() {
   const [draftAgreement, setDraftAgreement] = useState<Partial<Agreement>>({});
   const [dbLoading, setDbLoading] = useState(false);
   const [sharedOwnerId, setSharedOwnerId] = useState<string | null>(null);
+  
+  // Users List (for Transfer)
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
 
   // UI State
   const [dialog, setDialog] = useState<{isOpen: boolean; type?: 'error'|'success'|'confirm'|'alert'; message?: string; onConfirm?: () => void}>({ isOpen: false });
   const [woModal, setWoModal] = useState<{isOpen: boolean; data: Partial<WorkOrder> | null}>({ isOpen: false, data: null });
   const [itemModal, setItemModal] = useState<{isOpen: boolean; data: Partial<WorkOrderItem> | null}>({ isOpen: false, data: null });
   const [mergeModal, setMergeModal] = useState<{isOpen: boolean; selectedIds: string[]}>({ isOpen: false, selectedIds: [] });
-  const [transferModal, setTransferModal] = useState<{isOpen: boolean; targetEmail: string}>({ isOpen: false, targetEmail: '' });
+  const [transferModal, setTransferModal] = useState<{isOpen: boolean; targetUser: UserProfile | null}>({ isOpen: false, targetUser: null });
   
   const [signingRole, setSigningRole] = useState<SigningRole | null>(null);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -81,6 +84,25 @@ export default function App() {
     }
     return () => unsub();
   }, []);
+
+  // 讀取所有使用者列表 (用於轉交功能)
+  useEffect(() => {
+    if (!user) return;
+    // 監聽 users 集合，獲取其他使用者資料
+    const q = query(collection(db, 'artifacts', 'mobile-mo', 'users'));
+    const unsubUsers = onSnapshot(q, (snapshot) => {
+        const usersList: UserProfile[] = [];
+        snapshot.forEach(doc => {
+            const userData = doc.data() as UserProfile;
+            // 排除自己
+            if (userData.uid !== user.uid) {
+                usersList.push(userData);
+            }
+        });
+        setAllUsers(usersList);
+    });
+    return () => unsubUsers();
+  }, [user]);
 
   const fetchProducts = async () => {
     setDbLoading(true);
@@ -175,7 +197,27 @@ export default function App() {
   }, [user, currentWOId, sharedOwnerId, workOrders]);
 
   // --- Handlers ---
-  const handleLogin = async () => { try { setLoading(true); await signInWithPopup(auth, provider); } catch(e) { setDialog({isOpen:true, type:'error', message:'登入失敗'}); setLoading(false); } };
+  const handleLogin = async () => { 
+    try { 
+        setLoading(true); 
+        const result = await signInWithPopup(auth, provider);
+        // 登入成功後，更新使用者資料到 Firestore (供轉交功能查詢)
+        const u = result.user;
+        if (u) {
+            await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', u.uid), {
+                uid: u.uid,
+                email: u.email,
+                displayName: u.displayName || u.email?.split('@')[0],
+                photoURL: u.photoURL,
+                lastLogin: serverTimestamp()
+            }, { merge: true });
+        }
+    } catch(e) { 
+        setDialog({isOpen:true, type:'error', message:'登入失敗'}); 
+        setLoading(false); 
+    } 
+  };
+  
   const handleLogout = () => signOut(auth);
   
   const handleUpdateAgreement = (field: keyof Agreement, value: any) => {
@@ -310,9 +352,44 @@ export default function App() {
     }
   };
 
+  // 實作：將協議書完整轉交給另一位使用者
   const handleTransfer = async () => {
-     setDialog({isOpen:true, type:'success', message: `已將協議書轉交給：${transferModal.targetEmail} (模擬)`});
-     setTransferModal({isOpen:false, targetEmail:''});
+     if (!transferModal.targetUser || !currentWorkOrder || !user) return;
+     const targetUser = transferModal.targetUser;
+     const senderName = user.displayName || user.email;
+
+     setLoading(true);
+     try {
+        const batch = writeBatch(db);
+        const newId = doc(collection(db, 'dummy')).id; // 為對方產生新的工令 ID
+
+        // 1. 複製工令資料 (Metadata)
+        const woRef = doc(db, 'artifacts', 'mobile-mo', 'users', targetUser.uid, 'workOrders', newId);
+        batch.set(woRef, {
+            ...currentWorkOrder,
+            id: newId,
+            status: '接收工令', // 狀態重置或保留視需求而定
+            remark: `轉交自: ${senderName}`, // 在備註欄顯示來源
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+
+        // 2. 複製協議書內容 (包含簽名)
+        const agreeRef = doc(db, 'artifacts', 'mobile-mo', 'users', targetUser.uid, 'agreements', newId);
+        batch.set(agreeRef, {
+            ...draftAgreement
+        });
+
+        await batch.commit();
+
+        setDialog({isOpen:true, type:'success', message: `已成功轉交給 ${targetUser.displayName}`});
+        setTransferModal({isOpen:false, targetUser: null});
+     } catch(e) {
+        console.error(e);
+        setDialog({isOpen:true, type:'error', message: '轉交失敗，請稍後再試'});
+     } finally {
+        setLoading(false);
+     }
   };
 
   const handleDelete = (col: string, id: string) => {
@@ -332,7 +409,7 @@ export default function App() {
            <FileSpreadsheet size={40}/>
         </div>
         <h1 className="text-3xl font-extrabold mb-2 text-slate-800 tracking-tight">行動版 MO</h1>
-        <p className="text-slate-500 mb-8 font-medium">開工協議書 • 工令管理 • MO明細</p>
+        <p className="text-slate-500 mb-8 font-medium">中鋼風格 • 雲端同步 • 專業工令</p>
         <button onClick={handleLogin} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-bold text-lg flex justify-center items-center gap-3 hover:bg-black active:scale-95 transition-all shadow-xl shadow-slate-900/30">
            <UserIcon size={20}/> 使用 Google 登入
         </button>
@@ -366,7 +443,7 @@ export default function App() {
             onSigning={setSigningRole} onClearSignature={(rid:string) => handleUpdateAgreement('signatures', {...draftAgreement.signatures, [rid]: null})}
             onDateChange={handleSignatureDateChange} 
             onCreate={handleCreateWO} 
-            onTransfer={() => setTransferModal({isOpen:true, targetEmail:''})}
+            onTransfer={() => setTransferModal({isOpen:true, targetUser: null})}
           />
         )}
         {activeTab === 'wo' && (
@@ -418,10 +495,35 @@ export default function App() {
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Send size={20}/> 轉交協議書</h3>
-              <p className="text-xs text-gray-500 mb-4">輸入對方的 Email 或名稱以轉交整份文件。</p>
+              <p className="text-xs text-gray-500 mb-4">請選擇轉交對象 (已登入過系統的使用者)：</p>
               <div className="space-y-4">
-                 <input type="text" value={transferModal.targetEmail} onChange={e => setTransferModal({...transferModal, targetEmail:e.target.value})} className="w-full bg-slate-50 border p-3 rounded-xl" placeholder="輸入 Email..." />
-                 <div className="flex gap-2 pt-2"><button onClick={() => setTransferModal({isOpen:false, targetEmail:''})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button><button onClick={handleTransfer} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg">確認轉交</button></div>
+                 <div className="relative">
+                    <select 
+                        value={transferModal.targetUser?.uid || ''} 
+                        onChange={e => {
+                            const selected = allUsers.find(u => u.uid === e.target.value);
+                            setTransferModal({...transferModal, targetUser: selected || null});
+                        }}
+                        className="w-full bg-slate-50 border p-3 rounded-xl appearance-none"
+                    >
+                        <option value="" disabled>請選擇使用者...</option>
+                        {allUsers.map(u => (
+                            <option key={u.uid} value={u.uid}>{u.displayName} ({u.email})</option>
+                        ))}
+                    </select>
+                    <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400">▼</div>
+                 </div>
+                 
+                 <div className="flex gap-2 pt-2">
+                    <button onClick={() => setTransferModal({isOpen:false, targetUser: null})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button>
+                    <button 
+                        onClick={handleTransfer} 
+                        disabled={!transferModal.targetUser}
+                        className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none"
+                    >
+                        確認轉交
+                    </button>
+                 </div>
               </div>
            </div>
         </div>

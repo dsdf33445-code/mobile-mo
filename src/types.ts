@@ -8,6 +8,7 @@ export interface WorkOrder {
   status: string;     // 狀態: '接收工令' | 'MO' | '已完工' | '已結案'
   subNo?: string;     // 分工令 (僅 MO 狀態有)
   applicant?: string; // 申請人/承包商
+  remark?: string;    // 備註 (用於顯示轉交來源等)
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 }
@@ -54,4 +55,12 @@ export interface Agreement {
 export interface SigningRole {
   id: string;
   label: string;
+}
+
+// 使用者設定檔
+export interface UserProfile {
+  uid: string;
+  email: string;
+  displayName: string;
+  photoURL: string;
 }
