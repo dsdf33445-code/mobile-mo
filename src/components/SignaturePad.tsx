@@ -21,13 +21,11 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
       if (!canvas || !container) return;
 
       // 取得容器目前的顯示尺寸
-      // 在手機橫向模式下，CSS 雖然旋轉了，但我們需要設定 Canvas 的「內部解析度」匹配視覺大小
-      // 這裡直接讀取 clientWidth/Height 即可，因為 CSS 已經撐滿了
       const width = container.clientWidth;
       const height = container.clientHeight;
 
-      // 只有當尺寸改變很大時才重設 (避免手機瀏覽器網址列縮放導致重繪清空)
-      if (Math.abs(canvas.width - width) > 50 || Math.abs(canvas.height - height) > 50) {
+      // 只有當尺寸改變很大時才重設 (避免瀏覽器網址列縮放導致重繪清空)
+      if (Math.abs(canvas.width - width) > 10 || Math.abs(canvas.height - height) > 10) {
           canvas.width = width;
           canvas.height = height;
           
@@ -42,10 +40,10 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
       }
     };
 
-    // 稍微延遲以確保 CSS 佈局完成
+    // 延遲偵測以確保 CSS 佈局完成
     const timer = setTimeout(initCanvas, 100);
     
-    // 監聽視窗大小改變 (旋轉或縮放)
+    // 監聽旋轉與調整大小
     window.addEventListener('resize', initCanvas);
     
     // 鎖定背景滾動
@@ -94,18 +92,15 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
   const save = () => {
     if(!canvasRef.current) return;
     
-    // 建立一個暫存 Canvas 來匯出圖片
-    // 這可以確保匯出的圖片背景是正確的，且沒有多餘的空白
     const temp = document.createElement('canvas');
     temp.width = canvasRef.current.width;
     temp.height = canvasRef.current.height;
     const tCtx = temp.getContext('2d');
     
     if(tCtx) {
-      // 若需要白色背景請解開下面兩行，目前預設為透明背景 (適合疊加在文件上)
+      // 預設透明背景，若需白色背景可自行開啟下兩行
       // tCtx.fillStyle = '#ffffff';
       // tCtx.fillRect(0, 0, temp.width, temp.height);
-      
       tCtx.drawImage(canvasRef.current, 0, 0);
       onSave(temp.toDataURL('image/png'));
     }
@@ -113,22 +108,24 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
 
   return (
     <div className="fixed inset-0 z-[80] bg-slate-900/90 flex items-center justify-center overflow-hidden">
-      {/* 核心修正：
-         1. 手機版 (default): 
-            - 使用 fixed left-1/2 top-1/2 配合 -translate-x/y-1/2 確保絕對置中。
-            - 寬度設為 100vh (螢幕高度)，高度設為 100vw (螢幕寬度)。
-            - 旋轉 -90 度。
-            - 這樣無論瀏覽器導航列如何變化，它都會死死釘在螢幕中間，按鈕不會跑掉。
-         
-         2. 平板/桌面版 (sm):
-            - 還原旋轉 (rotate-0)。
-            - 還原寬高 (w-full max-w-2xl)。
+      {/* CSS 邏輯說明：
+         1. portrait: (手機直拿) -> 強制旋轉 90 度，寬高互換。
+         2. landscape: (手機橫拿) -> 不旋轉，正常填滿螢幕，按鈕就不會消失。
+         3. sm: (電腦/平板) -> 還原為視窗模式。
       */}
       <div className="
-        fixed left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2
-        w-[100vh] h-[100vw] -rotate-90 origin-center
+        fixed bg-white shadow-2xl flex flex-col
+        
+        /* 手機直向 (Portrait): 強制旋轉 */
+        portrait:top-1/2 portrait:left-1/2 portrait:-translate-x-1/2 portrait:-translate-y-1/2
+        portrait:w-[100vh] portrait:h-[100vw] portrait:-rotate-90 portrait:origin-center
+        
+        /* 手機橫向 (Landscape): 正常顯示，不旋轉 */
+        landscape:inset-0 landscape:w-full landscape:h-full 
+        landscape:rotate-0 landscape:translate-0
+        
+        /* 電腦/平板 (sm): 視窗模式 */
         sm:static sm:translate-x-0 sm:translate-y-0 sm:rotate-0 sm:w-full sm:max-w-2xl sm:h-[600px] sm:rounded-3xl
-        bg-white shadow-2xl flex flex-col
       ">
         {/* Header */}
         <div className="p-4 bg-slate-50 border-b flex justify-between items-center shrink-0">
