@@ -19,12 +19,12 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
   useEffect(() => {
     const resizeCanvas = () => {
       if (containerRef.current && canvasRef.current) {
-        // 修正：移除未使用的 rect 變數
+        // 修正：直接取容器的 clientWidth/Height，移除未使用的 rect 變數
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
 
-        // 注意：在旋轉模式下，getBoundingClientRect 會返回旋轉後的邊界
-        // 但 canvas 的 width/height 屬性是內部的像素尺寸，我們直接取容器的 clientWidth/Height 比較穩
+        // 手機強制橫向時，容器的寬高會互換 (w=100vh, h=100vw)
+        // 使用 clientWidth/Height 可以正確取得當前容器的內部像素大小
         const newWidth = containerRef.current.clientWidth;
         const newHeight = containerRef.current.clientHeight;
 
@@ -32,7 +32,6 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
            // 1. 在調整大小前保存內容
            if (canvas.width > 0 && canvas.height > 0) {
                try {
-                  // 只保存有效區域
                   savedImageData.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
                } catch(e) {
                   // Ignore
@@ -43,14 +42,14 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
            canvas.width = newWidth;
            canvas.height = newHeight;
 
-           // 3. 設定樣式 (線條加粗一點，因為手機橫向可能變大)
+           // 3. 設定樣式 (線條加粗，因為橫向模式下解析度較高)
            ctx.lineWidth = 4;
            ctx.lineCap = 'round';
            ctx.lineJoin = 'round';
-           ctx.strokeStyle = '#000000'; // 改為黑色簽名較清楚
+           ctx.strokeStyle = '#000000'; // 黑色簽名
            ctxRef.current = ctx;
 
-           // 4. 還原內容 (如果有)
+           // 4. 還原內容
            if (savedImageData.current) {
                ctx.putImageData(savedImageData.current, 0, 0);
            }
@@ -58,13 +57,13 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
       }
     };
     
-    // 初始設定 (延遲一下確保 CSS transform 完成)
+    // 延遲執行以確保 CSS transform 動畫完成後再抓取尺寸
     setTimeout(resizeCanvas, 100);
 
     const observer = new ResizeObserver(resizeCanvas);
     if (containerRef.current) observer.observe(containerRef.current);
     
-    // 防止滾動
+    // 防止背景滾動
     document.body.style.overflow = 'hidden';
     
     return () => { 
@@ -73,11 +72,11 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
     };
   }, []);
 
+  // 取得滑鼠/觸控座標
   const getPos = (e: any) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
     
-    // 處理 Touch 事件與 Mouse 事件
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
@@ -90,7 +89,6 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
   const start = (e: any) => { setIsDrawing(true); const {x,y} = getPos(e); ctxRef.current?.beginPath(); ctxRef.current?.moveTo(x,y); };
   const move = (e: any) => { 
       if(!isDrawing) return; 
-      // 防止在畫布上滑動時觸發捲動
       if(e.cancelable) e.preventDefault(); 
       const {x,y} = getPos(e); 
       ctxRef.current?.lineTo(x,y); 
@@ -105,23 +103,20 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
     temp.height = canvasRef.current.height;
     const tCtx = temp.getContext('2d');
     if(tCtx) {
-      // 背景設為透明或白色 (這裡設透明適合疊加，但為了預覽清楚設白色)
-      // 若要透明簽名，可移除 fillRect
-      // tCtx.fillStyle = '#ffffff';
-      // tCtx.fillRect(0,0,temp.width,temp.height);
       tCtx.drawImage(canvasRef.current,0,0);
-      onSave(temp.toDataURL('image/png')); // 改用 PNG 支援透明
+      onSave(temp.toDataURL('image/png'));
     }
   };
 
   return (
-    // 外層容器：在桌面版顯示遮罩，手機版則全螢幕佔滿
+    // 外層容器：手機版全螢幕，桌面版顯示遮罩
     <div className="fixed inset-0 z-[80] sm:bg-slate-900/80 sm:flex sm:items-center sm:justify-center animate-in fade-in">
       
-      {/* 核心變更：
-         1. w-[100vh] h-[100vw]: 寬度設為視窗高度，高度設為視窗寬度 (因為要旋轉)
-         2. origin-top-left -rotate-90 translate-y-[100vh]: 以左上角為軸心逆時針轉90度，並向下推回視窗範圍
-         3. sm:... : 在平板/桌面以上還原為正常彈出視窗
+      {/* 核心樣式說明 (強制橫向)：
+         1. w-[100vh] h-[100vw]: 寬度設為螢幕高度，高度設為螢幕寬度。
+         2. origin-top-left -rotate-90: 以左上角為軸心逆時針轉 90 度。
+         3. translate-y-[100vh]: 旋轉後會跑出螢幕上方，需向下推回一個螢幕高度。
+         4. sm:... : 平板/電腦版還原為正常的置中彈出視窗。
       */}
       <div className="
           fixed top-0 left-0 bg-white shadow-2xl flex flex-col
@@ -146,7 +141,7 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
           
           {!isDrawing && (
              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
-                <span className="text-6xl font-bold text-slate-400 transform -rotate-0">簽署區域</span>
+                <span className="text-6xl font-bold text-slate-400">簽署區域</span>
              </div>
           )}
         </div>
