@@ -19,7 +19,7 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
   useEffect(() => {
     const resizeCanvas = () => {
       if (containerRef.current && canvasRef.current) {
-        const rect = containerRef.current.getBoundingClientRect();
+        // 修正：移除未使用的 rect 變數
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
 
