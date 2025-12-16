@@ -13,66 +13,51 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
 
-  // 用來保存縮放前的圖像資料，防止 Resize 時清空
-  const savedImageData = useRef<ImageData | null>(null);
-
+  // 初始化 Canvas
   useEffect(() => {
-    const resizeCanvas = () => {
-      if (containerRef.current && canvasRef.current) {
-        // 修正：直接取容器的 clientWidth/Height，移除未使用的 rect 變數
-        const canvas = canvasRef.current;
-        const ctx = canvas.getContext('2d');
+    const initCanvas = () => {
+      const canvas = canvasRef.current;
+      const container = containerRef.current;
+      if (!canvas || !container) return;
 
-        // 手機強制橫向時，容器的寬高會互換 (w=100vh, h=100vw)
-        // 使用 clientWidth/Height 可以正確取得當前容器的內部像素大小
-        const newWidth = containerRef.current.clientWidth;
-        const newHeight = containerRef.current.clientHeight;
+      // 取得容器目前的顯示尺寸
+      // 在手機橫向模式下，CSS 雖然旋轉了，但我們需要設定 Canvas 的「內部解析度」匹配視覺大小
+      // 這裡直接讀取 clientWidth/Height 即可，因為 CSS 已經撐滿了
+      const width = container.clientWidth;
+      const height = container.clientHeight;
 
-        if (ctx) {
-           // 1. 在調整大小前保存內容
-           if (canvas.width > 0 && canvas.height > 0) {
-               try {
-                  savedImageData.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
-               } catch(e) {
-                  // Ignore
-               }
-           }
-           
-           // 2. 調整大小
-           canvas.width = newWidth;
-           canvas.height = newHeight;
-
-           // 3. 設定樣式 (線條加粗，因為橫向模式下解析度較高)
-           ctx.lineWidth = 4;
-           ctx.lineCap = 'round';
-           ctx.lineJoin = 'round';
-           ctx.strokeStyle = '#000000'; // 黑色簽名
-           ctxRef.current = ctx;
-
-           // 4. 還原內容
-           if (savedImageData.current) {
-               ctx.putImageData(savedImageData.current, 0, 0);
-           }
-        }
+      // 只有當尺寸改變很大時才重設 (避免手機瀏覽器網址列縮放導致重繪清空)
+      if (Math.abs(canvas.width - width) > 50 || Math.abs(canvas.height - height) > 50) {
+          canvas.width = width;
+          canvas.height = height;
+          
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.strokeStyle = '#000000';
+            ctxRef.current = ctx;
+          }
       }
     };
-    
-    // 延遲執行以確保 CSS transform 動畫完成後再抓取尺寸
-    setTimeout(resizeCanvas, 100);
 
-    const observer = new ResizeObserver(resizeCanvas);
-    if (containerRef.current) observer.observe(containerRef.current);
+    // 稍微延遲以確保 CSS 佈局完成
+    const timer = setTimeout(initCanvas, 100);
     
-    // 防止背景滾動
+    // 監聽視窗大小改變 (旋轉或縮放)
+    window.addEventListener('resize', initCanvas);
+    
+    // 鎖定背景滾動
     document.body.style.overflow = 'hidden';
-    
-    return () => { 
-        observer.disconnect(); 
-        document.body.style.overflow = 'unset'; 
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', initCanvas);
+      document.body.style.overflow = 'unset';
     };
   }, []);
 
-  // 取得滑鼠/觸控座標
   const getPos = (e: any) => {
     if (!canvasRef.current) return { x: 0, y: 0 };
     const rect = canvasRef.current.getBoundingClientRect();
@@ -86,7 +71,13 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
     };
   };
 
-  const start = (e: any) => { setIsDrawing(true); const {x,y} = getPos(e); ctxRef.current?.beginPath(); ctxRef.current?.moveTo(x,y); };
+  const start = (e: any) => { 
+      setIsDrawing(true); 
+      const {x,y} = getPos(e); 
+      ctxRef.current?.beginPath(); 
+      ctxRef.current?.moveTo(x,y); 
+  };
+
   const move = (e: any) => { 
       if(!isDrawing) return; 
       if(e.cancelable) e.preventDefault(); 
@@ -94,36 +85,52 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
       ctxRef.current?.lineTo(x,y); 
       ctxRef.current?.stroke(); 
   };
-  const end = () => { setIsDrawing(false); ctxRef.current?.closePath(); };
+
+  const end = () => { 
+      setIsDrawing(false); 
+      ctxRef.current?.closePath(); 
+  };
 
   const save = () => {
     if(!canvasRef.current) return;
+    
+    // 建立一個暫存 Canvas 來匯出圖片
+    // 這可以確保匯出的圖片背景是正確的，且沒有多餘的空白
     const temp = document.createElement('canvas');
     temp.width = canvasRef.current.width;
     temp.height = canvasRef.current.height;
     const tCtx = temp.getContext('2d');
+    
     if(tCtx) {
-      tCtx.drawImage(canvasRef.current,0,0);
+      // 若需要白色背景請解開下面兩行，目前預設為透明背景 (適合疊加在文件上)
+      // tCtx.fillStyle = '#ffffff';
+      // tCtx.fillRect(0, 0, temp.width, temp.height);
+      
+      tCtx.drawImage(canvasRef.current, 0, 0);
       onSave(temp.toDataURL('image/png'));
     }
   };
 
   return (
-    // 外層容器：手機版全螢幕，桌面版顯示遮罩
-    <div className="fixed inset-0 z-[80] sm:bg-slate-900/80 sm:flex sm:items-center sm:justify-center animate-in fade-in">
-      
-      {/* 核心樣式說明 (強制橫向)：
-         1. w-[100vh] h-[100vw]: 寬度設為螢幕高度，高度設為螢幕寬度。
-         2. origin-top-left -rotate-90: 以左上角為軸心逆時針轉 90 度。
-         3. translate-y-[100vh]: 旋轉後會跑出螢幕上方，需向下推回一個螢幕高度。
-         4. sm:... : 平板/電腦版還原為正常的置中彈出視窗。
+    <div className="fixed inset-0 z-[80] bg-slate-900/90 flex items-center justify-center overflow-hidden">
+      {/* 核心修正：
+         1. 手機版 (default): 
+            - 使用 fixed left-1/2 top-1/2 配合 -translate-x/y-1/2 確保絕對置中。
+            - 寬度設為 100vh (螢幕高度)，高度設為 100vw (螢幕寬度)。
+            - 旋轉 -90 度。
+            - 這樣無論瀏覽器導航列如何變化，它都會死死釘在螢幕中間，按鈕不會跑掉。
+         
+         2. 平板/桌面版 (sm):
+            - 還原旋轉 (rotate-0)。
+            - 還原寬高 (w-full max-w-2xl)。
       */}
       <div className="
-          fixed top-0 left-0 bg-white shadow-2xl flex flex-col
-          w-[100vh] h-[100vw] origin-top-left -rotate-90 translate-y-[100vh]
-          sm:static sm:w-full sm:max-w-2xl sm:h-[600px] sm:rotate-0 sm:translate-y-0 sm:rounded-3xl
+        fixed left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2
+        w-[100vh] h-[100vw] -rotate-90 origin-center
+        sm:static sm:translate-x-0 sm:translate-y-0 sm:rotate-0 sm:w-full sm:max-w-2xl sm:h-[600px] sm:rounded-3xl
+        bg-white shadow-2xl flex flex-col
       ">
-        {/* 標題列 */}
+        {/* Header */}
         <div className="p-4 bg-slate-50 border-b flex justify-between items-center shrink-0">
           <h3 className="font-bold text-lg text-slate-800 flex items-center gap-2">
              請橫向簽名：<span className="text-blue-600">{title}</span>
@@ -133,12 +140,14 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
           </button>
         </div>
 
-        {/* 畫布區域 */}
+        {/* Canvas Area */}
         <div ref={containerRef} className="flex-1 bg-white relative touch-none select-none overflow-hidden cursor-crosshair">
-          <canvas ref={canvasRef} className="absolute inset-0 block w-full h-full"
+          <canvas 
+            ref={canvasRef} 
+            className="block w-full h-full"
             onMouseDown={start} onMouseMove={move} onMouseUp={end} onMouseLeave={end}
-            onTouchStart={start} onTouchMove={move} onTouchEnd={end} />
-          
+            onTouchStart={start} onTouchMove={move} onTouchEnd={end} 
+          />
           {!isDrawing && (
              <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-10">
                 <span className="text-6xl font-bold text-slate-400">簽署區域</span>
@@ -146,22 +155,22 @@ export default function SignaturePad({ title, onSave, onClose }: Props) {
           )}
         </div>
 
-        {/* 按鈕列 */}
-        <div className="p-4 border-t bg-slate-50 flex gap-4 safe-area-bottom shrink-0 z-10">
+        {/* Footer Buttons */}
+        <div className="p-4 border-t bg-slate-50 flex gap-4 shrink-0 safe-area-bottom">
           <button 
             onClick={() => { 
-                ctxRef.current?.clearRect(0,0,canvasRef.current!.width,canvasRef.current!.height); 
-                savedImageData.current = null; 
+                const cvs = canvasRef.current;
+                if(cvs) ctxRef.current?.clearRect(0, 0, cvs.width, cvs.height); 
             }} 
             className="flex-1 py-4 bg-white border-2 border-slate-200 text-slate-600 rounded-2xl font-bold flex justify-center items-center gap-2 active:bg-slate-100 transition-colors text-lg"
           >
-            <Eraser size={24}/> 清除重寫
+            <Eraser size={24}/> 重寫
           </button>
           <button 
             onClick={save} 
             className="flex-[2] py-4 bg-blue-600 text-white rounded-2xl font-bold shadow-lg flex justify-center items-center gap-2 active:bg-blue-700 active:scale-[0.98] transition-all text-lg"
           >
-            <CheckCircle2 size={24}/> 確認簽名
+            <CheckCircle2 size={24}/> 確認
           </button>
         </div>
       </div>
