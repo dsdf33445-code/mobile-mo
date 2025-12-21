@@ -67,13 +67,22 @@ export default function App() {
   useEffect(() => {
     const initAuth = async () => { setLoading(true); };
     initAuth();
-    const unsub = onAuthStateChanged(auth, u => { 
-        setUser(u); 
-        if(u && !new URLSearchParams(window.location.search).get('shareId')) {
-            setActiveTab('wo');
+    const unsub = onAuthStateChanged(auth, 
+        (u) => { 
+            setUser(u); 
+            // 確保無論有沒有 user，只要 Auth 檢查完就關閉 loading
+            // 注意：如果您有其他 useEffect 會再次開啟 loading (如 items 監聽)，這是正常的
+            if (!currentWOId) setLoading(false); 
+            
+            if(u && !new URLSearchParams(window.location.search).get('shareId')) {
+                setActiveTab('wo');
+            }
+        },
+        (error) => {
+            console.error("Auth Error:", error);
+            setLoading(false); // 發生錯誤也要關閉 loading
         }
-        if (!u) setLoading(false);
-    });
+    );    
     
     const params = new URLSearchParams(window.location.search);
     const shareId = params.get('shareId');
