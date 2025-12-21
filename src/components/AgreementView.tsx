@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, X, PenTool, FileText, Send, Printer, FileSignature } from 'lucide-react';
+import { ChevronDown, ChevronUp, X, PenTool, FileText, Send, Printer, FileSignature, Stamp } from 'lucide-react';
 import { CONTRACTOR_OPTIONS, SAFETY_CHECK_ITEMS, SIGNATURE_ROLES } from '../constants';
 import type { Agreement, SigningRole } from '../types';
 
@@ -7,9 +7,11 @@ interface Props {
   data: Partial<Agreement>;
   currentWOId: string | null;
   isShared: boolean;
+  userSignature?: string; // 使用者預設的電子簽章
   onChange: (field: keyof Agreement, value: any) => void;
   onToggleSafety: (idx: number) => void;
   onSigning: (role: SigningRole) => void;
+  onStamp: (role: SigningRole) => void; // 快速蓋章
   onClearSignature: (roleId: string) => void;
   onDateChange: (roleId: string, date: string) => void;
   onCreate: () => void;
@@ -17,8 +19,8 @@ interface Props {
 }
 
 export default function AgreementView({ 
-  data, currentWOId, isShared, 
-  onChange, onToggleSafety, onSigning, onClearSignature, onDateChange, onCreate, onTransfer
+  data, currentWOId, isShared, userSignature,
+  onChange, onToggleSafety, onSigning, onStamp, onClearSignature, onDateChange, onCreate, onTransfer
 }: Props) {
   const [isSafetyExpanded, setIsSafetyExpanded] = useState(false);
   
@@ -114,10 +116,8 @@ export default function AgreementView({
 
           <div className="print:break-inside-avoid">
             <h4 className="font-bold text-slate-800 mb-3 text-sm print:text-black">簽名確認</h4>
-            {/* 修改：列印時將 gap-4 改為 gap-2 以節省空間 */}
             <div className="grid gap-3 print:grid-cols-3 print:gap-2">
               {SIGNATURE_ROLES.map(role => (
-                // 修改：列印時加入 print:p-1 縮小內距
                 <div key={role.id} onClick={() => !data.signatures?.[role.id] && onSigning(role)} className={`p-3 print:p-1 rounded-xl border-2 border-dashed transition-all cursor-pointer print:border print:border-black print:rounded-none ${data.signatures?.[role.id] ? 'border-blue-200 bg-blue-50/30 print:bg-transparent' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'}`}>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-xs font-bold text-slate-500 print:text-black">{role.label}</span>
@@ -125,13 +125,23 @@ export default function AgreementView({
                   </div>
                   {data.signatures?.[role.id] ? (
                     <div className="flex flex-col items-center">
-                      {/* 修改：螢幕顯示 h-32，列印時縮小為 h-20 */}
                       <img src={data.signatures[role.id]!.img} alt="簽名" className="h-32 print:h-20 object-contain mix-blend-multiply" />
-                      {/* 修改：列印時移除上方 margin (print:mt-0) */}
                       <input type="date" value={data.signatures[role.id]!.date} onClick={e => e.stopPropagation()} onChange={e => onDateChange(role.id, e.target.value)} className="text-xs border rounded px-1 mt-1 print:mt-0 text-gray-500 print:border-0 print:text-black" />
                     </div>
                   ) : (
-                    <div className="h-16 flex items-center justify-center text-slate-300 gap-2 no-print"><PenTool size={16}/> 點擊簽名</div>
+                    <div className="h-24 flex flex-col items-center justify-center text-slate-300 gap-2 no-print relative group">
+                        <div className="flex items-center gap-1"><PenTool size={16}/> 點擊簽名</div>
+                        
+                        {/* 這裡新增蓋章按鈕：如果有 userSignature，則顯示 */}
+                        {userSignature && (
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); onStamp(role); }}
+                                className="mt-2 bg-blue-100 text-blue-600 text-xs px-3 py-1.5 rounded-full font-bold flex items-center gap-1 hover:bg-blue-200 active:scale-95 transition-all shadow-sm z-10"
+                            >
+                                <Stamp size={12}/> 蓋章
+                            </button>
+                        )}
+                    </div>
                   )}
                 </div>
               ))}

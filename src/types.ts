@@ -63,4 +63,5 @@ export interface UserProfile {
   email: string;
   displayName: string;
   photoURL: string;
+  signatureUrl?: string; // 新增：使用者的預設電子簽章
 }

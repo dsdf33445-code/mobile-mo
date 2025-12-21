@@ -1,11 +1,12 @@
-import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2, GitMerge, ExternalLink } from 'lucide-react';
-import { utils, writeFile } from 'xlsx'; // 引入 SheetJS
+import { Plus, Trash2, FileSpreadsheet, RefreshCw, Loader2, GitMerge, ExternalLink, Edit } from 'lucide-react';
+import { utils, writeFile } from 'xlsx'; 
 import type { WorkOrder, WorkOrderItem } from '../types';
 
 interface Props {
   currentWorkOrder?: WorkOrder;
   items: WorkOrderItem[];
   onDeleteItem: (id: string) => void;
+  onEditItem: (item: WorkOrderItem) => void; // 新增編輯功能
   onAddClick: () => void;
   onReloadDb: () => void;
   onMergeClick: () => void;
@@ -14,55 +15,39 @@ interface Props {
 }
 
 export default function MoDetailView({ 
-  currentWorkOrder, items, onDeleteItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount 
+  currentWorkOrder, items, onDeleteItem, onEditItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount 
 }: Props) {
   
-  // 使用 xlsx 套件匯出真正的 Excel 檔 (.xls)
   const handleExport = () => {
     if (!items || items.length === 0) return;
     
-    // 1. 準備資料列 (Array of Arrays)
     const headers = ['項目編號(*必填)', '項目名稱(可不填寫)', '數量(*必填)', '倍率(*必填)', '加成(*必填)', '備註(可不填寫)'];
     
     const data = items.map((item) => [
-      item.no,       // 項目編號 (字串，保留前導零)
-      item.name,     // 名稱
-      Number(item.qty),      // 數量 (轉為數字)
-      1.0,           // 倍率 (數字)
-      1.0,           // 加成 (數字)
-      ''             // 備註
+      item.no,
+      item.name,
+      Number(item.qty),
+      1.0,
+      1.0,
+      ''
     ]);
 
-    // 加上標題列
     const wsData = [headers, ...data];
-
-    // 2. 建立工作表 (Worksheet)
     const ws = utils.aoa_to_sheet(wsData);
-
-    // 3. 建立工作簿 (Workbook)
     const wb = utils.book_new();
-
-    // 4. 將工作表加入工作簿，並命名分頁為 "ITEM" (維持不變)
     utils.book_append_sheet(wb, ws, "ITEM");
 
-    // 5. 產生檔名：Y641A123-01_2025.12.13.xls
     const no = currentWorkOrder?.no || 'export';
-    const sub = currentWorkOrder?.subNo ? `-${currentWorkOrder.subNo}` : ''; // 若有分工令才加 -
-    
+    const sub = currentWorkOrder?.subNo ? `-${currentWorkOrder.subNo}` : ''; 
     const now = new Date();
-    const yyyy = now.getFullYear();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const dd = String(now.getDate()).padStart(2, '0');
-    
-    const filename = `${no}${sub}_${yyyy}.${mm}.${dd}.xls`;
+    const dateStr = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`;
+    const filename = `${no}${sub}_${dateStr}.xls`;
 
-    // 6. 寫入檔案 (bookType: 'biff8' 對應 .xls 格式)
     writeFile(wb, filename, { bookType: 'biff8' });
   };
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-500 pb-20">
-      {/* 上方資訊卡片 */}
       <div className="bg-[#1e3a8a] text-white p-5 rounded-3xl shadow-xl shadow-blue-900/20 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-10 -mt-10 blur-2xl"></div>
         
@@ -86,15 +71,12 @@ export default function MoDetailView({
         </div>
       </div>
       
-      {/* 功能按鈕區：左右分佈 */}
       <div className="flex justify-between items-center py-1 overflow-x-auto">
-         {/* 左側：更新資料庫 */}
          <button onClick={onReloadDb} className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 shadow-sm hover:bg-slate-50 whitespace-nowrap active:scale-95 transition-transform">
             {dbLoading ? <Loader2 className="animate-spin" size={14}/> : <RefreshCw size={14}/>} 
             更新資料庫 ({productCount})
          </button>
 
-         {/* 右側：前往 MO & 匯出 Excel */}
          <div className="flex gap-2 ml-2">
             <a 
               href="https://dsz.csc.com.tw/dsz/login/dszs0?action=https://cscqs01.csc.com.tw/qs_home/QS_HOME_Redirect.ASP%3FECinfo=MO01" 
@@ -110,7 +92,6 @@ export default function MoDetailView({
          </div>
       </div>
 
-      {/* 項目列表 */}
       <div className="space-y-3">
         {items.map((item) => (
           <div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
@@ -135,9 +116,16 @@ export default function MoDetailView({
                   </div>
                </div>
                
-               <button onClick={() => onDeleteItem(item.id)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors absolute bottom-2 right-2">
-                 <Trash2 size={18}/>
-               </button>
+               <div className="absolute bottom-2 right-2 flex gap-1">
+                 {/* 編輯按鈕 */}
+                 <button onClick={() => onEditItem(item)} className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors">
+                   <Edit size={18}/>
+                 </button>
+                 {/* 刪除按鈕 */}
+                 <button onClick={() => onDeleteItem(item.id)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors">
+                   <Trash2 size={18}/>
+                 </button>
+               </div>
             </div>
           </div>
         ))}

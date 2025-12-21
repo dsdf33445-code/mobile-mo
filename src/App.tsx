@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { 
   FileSpreadsheet, AlertTriangle, CheckCircle2, LogOut, Loader2, User as UserIcon, 
-  GitMerge, CheckSquare, Square, Send, X 
+  GitMerge, CheckSquare, Square, Send, X, Settings, PenTool 
 } from 'lucide-react';
 
 import { auth, db, provider } from './firebase';
@@ -31,6 +31,7 @@ import type { WorkOrder, WorkOrderItem, Product, Agreement, SigningRole, UserPro
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null); // 當前使用者的完整資料 (含簽章)
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'agreement' | 'wo' | 'mo'>('wo');
   
@@ -42,8 +43,6 @@ export default function App() {
   const [draftAgreement, setDraftAgreement] = useState<Partial<Agreement>>({});
   const [dbLoading, setDbLoading] = useState(false);
   const [sharedOwnerId, setSharedOwnerId] = useState<string | null>(null);
-  
-  // Users List (for Transfer)
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
 
   // UI State
@@ -52,8 +51,11 @@ export default function App() {
   const [itemModal, setItemModal] = useState<{isOpen: boolean; data: Partial<WorkOrderItem> | null}>({ isOpen: false, data: null });
   const [mergeModal, setMergeModal] = useState<{isOpen: boolean; selectedIds: string[]}>({ isOpen: false, selectedIds: [] });
   const [transferModal, setTransferModal] = useState<{isOpen: boolean; targetUser: UserProfile | null}>({ isOpen: false, targetUser: null });
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false); // 設定選單開關
   
-  const [signingRole, setSigningRole] = useState<SigningRole | null>(null);
+  const [signingRole, setSigningRole] = useState<SigningRole | null>(null); // 協議書簽名用
+  const [isSettingSignature, setIsSettingSignature] = useState(false); // 設定個人簽章用
+  
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
 
@@ -67,10 +69,10 @@ export default function App() {
     initAuth();
     const unsub = onAuthStateChanged(auth, u => { 
         setUser(u); 
-        setLoading(false); 
         if(u && !new URLSearchParams(window.location.search).get('shareId')) {
             setActiveTab('wo');
         }
+        if (!u) setLoading(false);
     });
     
     const params = new URLSearchParams(window.location.search);
@@ -85,19 +87,24 @@ export default function App() {
     return () => unsub();
   }, []);
 
-  // 讀取所有使用者列表 (用於轉交功能)
+  // 監聽當前使用者的詳細資料 (取得簽章)
+  useEffect(() => {
+    if(!user) return;
+    const unsub = onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid), (doc) => {
+        if(doc.exists()) setCurrentUserProfile(doc.data() as UserProfile);
+    });
+    return () => unsub();
+  }, [user]);
+
+  // 監聽所有使用者 (轉交用)
   useEffect(() => {
     if (!user) return;
-    // 監聽 users 集合，獲取其他使用者資料
     const q = query(collection(db, 'artifacts', 'mobile-mo', 'users'));
     const unsubUsers = onSnapshot(q, (snapshot) => {
         const usersList: UserProfile[] = [];
         snapshot.forEach(doc => {
             const userData = doc.data() as UserProfile;
-            // 排除自己
-            if (userData.uid !== user.uid) {
-                usersList.push(userData);
-            }
+            if (userData.uid !== user.uid) usersList.push(userData);
         });
         setAllUsers(usersList);
     });
@@ -201,7 +208,6 @@ export default function App() {
     try { 
         setLoading(true); 
         const result = await signInWithPopup(auth, provider);
-        // 登入成功後，更新使用者資料到 Firestore (供轉交功能查詢)
         const u = result.user;
         if (u) {
             await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', u.uid), {
@@ -218,7 +224,7 @@ export default function App() {
     } 
   };
   
-  const handleLogout = () => signOut(auth);
+  const handleLogout = () => { setShowSettingsMenu(false); signOut(auth); };
   
   const handleUpdateAgreement = (field: keyof Agreement, value: any) => {
     if (field === 'woNo') value = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
@@ -239,14 +245,38 @@ export default function App() {
     handleUpdateAgreement('safetyChecks', newChecks);
   };
 
-  const handleSignatureSave = (img: string) => {
-    const uid = sharedOwnerId || user?.uid;
-    if(!uid || !currentWOId || !signingRole) return;
-    const today = new Date().toISOString().split('T')[0];
-    const currentSigs = draftAgreement.signatures || {};
-    const newSigs = { ...currentSigs, [signingRole.id]: { img, date: today } };
-    setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), { ...draftAgreement, signatures: newSigs }, {merge:true});
-    setSigningRole(null);
+  // 統一處理簽名板儲存 (包含協議書簽名 與 個人設定簽章)
+  const handleSignatureSave = async (img: string) => {
+    if (!user) return;
+    
+    if (isSettingSignature) {
+        // 設定個人簽章
+        await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid), { signatureUrl: img }, {merge: true});
+        setIsSettingSignature(false);
+        setDialog({isOpen:true, type:'success', message:'電子簽章已儲存'});
+    } else if (signingRole) {
+        // 協議書簽名
+        const uid = sharedOwnerId || user?.uid;
+        if(!uid || !currentWOId) return;
+        const today = new Date().toISOString().split('T')[0];
+        const currentSigs = draftAgreement.signatures || {};
+        const newSigs = { ...currentSigs, [signingRole.id]: { img, date: today } };
+        setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), { ...draftAgreement, signatures: newSigs }, {merge:true});
+        setSigningRole(null);
+    }
+  };
+  
+  // 快速蓋章功能
+  const handleStamp = (role: SigningRole) => {
+      if (!currentUserProfile?.signatureUrl) return setDialog({isOpen:true, type:'alert', message:'請先至設定建立電子簽章'});
+      
+      const uid = sharedOwnerId || user?.uid;
+      if(!uid || !currentWOId) return;
+      
+      const today = new Date().toISOString().split('T')[0];
+      const currentSigs = draftAgreement.signatures || {};
+      const newSigs = { ...currentSigs, [role.id]: { img: currentUserProfile.signatureUrl, date: today } };
+      setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), { ...draftAgreement, signatures: newSigs }, {merge:true});
   };
 
   const handleSignatureDateChange = (roleId: string, date: string) => {
@@ -258,7 +288,6 @@ export default function App() {
 
     const newSigs = { ...currentSigs, [roleId]: { ...currentSig, date } };
     setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), { signatures: newSigs }, {merge:true});
-    setSigningRole(null);
   };
 
   const handleCreateWO = async () => {
@@ -308,6 +337,14 @@ export default function App() {
 
   const handleSaveItem = async () => {
     if(!itemModal.data?.no || !itemModal.data?.qty) return;
+
+    // 邏輯判斷：同一項目編號只能一筆 (排除自己)
+    const duplicate = items.find(i => i.no === itemModal.data?.no && i.id !== itemModal.data?.id);
+    if (duplicate) {
+        setDialog({isOpen:true, type:'error', message: `項目編號 ${itemModal.data.no} 已存在！`});
+        return;
+    }
+
     const id = itemModal.data.id || doc(collection(db, 'dummy')).id;
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items', id), { ...itemModal.data, workOrderId: currentWOId, qty: Number(itemModal.data.qty), price: Number(itemModal.data.price||0) });
     setItemModal({isOpen:false, data:null});
@@ -352,7 +389,6 @@ export default function App() {
     }
   };
 
-  // 實作：將協議書完整轉交給另一位使用者
   const handleTransfer = async () => {
      if (!transferModal.targetUser || !currentWorkOrder || !user) return;
      const targetUser = transferModal.targetUser;
@@ -361,20 +397,18 @@ export default function App() {
      setLoading(true);
      try {
         const batch = writeBatch(db);
-        const newId = doc(collection(db, 'dummy')).id; // 為對方產生新的工令 ID
+        const newId = doc(collection(db, 'dummy')).id;
 
-        // 1. 複製工令資料 (Metadata)
         const woRef = doc(db, 'artifacts', 'mobile-mo', 'users', targetUser.uid, 'workOrders', newId);
         batch.set(woRef, {
             ...currentWorkOrder,
             id: newId,
-            status: '接收工令', // 狀態重置或保留視需求而定
-            remark: `轉交自: ${senderName}`, // 在備註欄顯示來源
+            status: '接收工令',
+            remark: `轉交自: ${senderName}`,
             createdAt: serverTimestamp(),
             updatedAt: serverTimestamp()
         });
 
-        // 2. 複製協議書內容 (包含簽名)
         const agreeRef = doc(db, 'artifacts', 'mobile-mo', 'users', targetUser.uid, 'agreements', newId);
         batch.set(agreeRef, {
             ...draftAgreement
@@ -423,15 +457,26 @@ export default function App() {
       {/* Header */}
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b p-4 flex justify-between safe-area-top no-print">
         <div className="flex items-center gap-2 font-bold text-lg text-slate-800"><FileSpreadsheet size={18}/> 行動版 MO</div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 relative">
           {sharedOwnerId && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">訪客</span>}
           {user && (
-              <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full">
+              <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full" onClick={() => setShowSettingsMenu(!showSettingsMenu)}>
                   {user.photoURL ? <img src={user.photoURL} alt="user" className="w-5 h-5 rounded-full" /> : <UserIcon size={14} />}
                   <span className="text-xs font-bold text-slate-700">{user.displayName || user.email?.split('@')[0]}</span>
+                  {showSettingsMenu ? <X size={14}/> : <Settings size={14}/>}
               </div>
           )}
-          {user && <button onClick={handleLogout}><LogOut size={18} className="text-slate-400"/></button>}
+          {/* 設定選單 (Dropdown) */}
+          {user && showSettingsMenu && (
+             <div className="absolute top-12 right-0 bg-white rounded-xl shadow-xl border overflow-hidden w-40 z-50 animate-in zoom-in-95">
+                 <button onClick={() => { setIsSettingSignature(true); setShowSettingsMenu(false); }} className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 flex items-center gap-2">
+                     <PenTool size={16}/> 設定電子簽章
+                 </button>
+                 <button onClick={handleLogout} className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 text-red-600 flex items-center gap-2 border-t">
+                     <LogOut size={16}/> 登出
+                 </button>
+             </div>
+          )}
         </div>
       </header>
 
@@ -439,8 +484,9 @@ export default function App() {
         {activeTab === 'agreement' && (
           <AgreementView 
             data={draftAgreement} currentWOId={currentWOId} isShared={!!sharedOwnerId}
+            userSignature={currentUserProfile?.signatureUrl}
             onChange={handleUpdateAgreement} onToggleSafety={handleToggleSafety}
-            onSigning={setSigningRole} onClearSignature={(rid:string) => handleUpdateAgreement('signatures', {...draftAgreement.signatures, [rid]: null})}
+            onSigning={setSigningRole} onStamp={handleStamp} onClearSignature={(rid:string) => handleUpdateAgreement('signatures', {...draftAgreement.signatures, [rid]: null})}
             onDateChange={handleSignatureDateChange} 
             onCreate={handleCreateWO} 
             onTransfer={() => setTransferModal({isOpen:true, targetUser: null})}
@@ -460,6 +506,7 @@ export default function App() {
           <MoDetailView 
             currentWorkOrder={currentWorkOrder} items={currentItems} dbLoading={dbLoading} productCount={products.length}
             onDeleteItem={(id:string) => handleDelete('items', id)}
+            onEditItem={(item) => { setItemModal({isOpen:true, data: item}); setShowSuggestions(false); }}
             onAddClick={() => { setItemModal({isOpen:true, data:{no:'', name:'', qty:0, price:0}}); setShowSuggestions(false); }}
             onReloadDb={fetchProducts}
             onMergeClick={() => setMergeModal({ isOpen: true, selectedIds: [] })}
@@ -471,7 +518,14 @@ export default function App() {
          <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} onMoClick={() => { if(!currentWOId) return setDialog({isOpen:true, type:'alert', message:'請先選擇工令'}); setActiveTab('mo'); }} />
       </div>
 
-      {signingRole && <SignaturePad title={signingRole.label} onSave={handleSignatureSave} onClose={() => setSigningRole(null)} />}
+      {/* 簽名板 (共用：協議書簽名 OR 個人設定簽章) */}
+      {(signingRole || isSettingSignature) && (
+          <SignaturePad 
+             title={isSettingSignature ? "設定個人電子簽章" : signingRole?.label || ''} 
+             onSave={handleSignatureSave} 
+             onClose={() => { setSigningRole(null); setIsSettingSignature(false); }} 
+          />
+      )}
       
       {woModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
@@ -558,7 +612,7 @@ export default function App() {
       {itemModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-xl animate-in slide-in-from-bottom-10">
-              <div className="flex justify-between mb-4"><h3 className="font-bold">新增項目</h3><button onClick={() => setItemModal({isOpen:false, data:null})}><X size={20}/></button></div>
+              <div className="flex justify-between mb-4"><h3 className="font-bold">{itemModal.data?.id ? '編輯項目' : '新增項目'}</h3><button onClick={() => setItemModal({isOpen:false, data:null})}><X size={20}/></button></div>
               <div className="space-y-4">
                  <div className="relative">
                     <label className="text-xs font-bold text-gray-500 block mb-1">項目編號</label>
