@@ -18,7 +18,7 @@ import {
 } from 'firebase/firestore';
 import { 
   FileSpreadsheet, AlertTriangle, CheckCircle2, LogOut, Loader2, User as UserIcon, 
-  GitMerge, CheckSquare, Square, Send, X, Settings, PenTool 
+  GitMerge, CheckSquare, Square, Send, X, Settings, PenTool, UserCog
 } from 'lucide-react';
 
 import { auth, db, provider } from './firebase';
@@ -27,11 +27,12 @@ import AgreementView from './components/AgreementView';
 import WorkOrderListView from './components/WorkOrderListView';
 import MoDetailView from './components/MoDetailView';
 import BottomNavigation from './components/BottomNavigation';
+import { USER_ROLES } from './constants'; // 引入角色定義
 import type { WorkOrder, WorkOrderItem, Product, Agreement, SigningRole, UserProfile } from './types';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
-  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null); // 當前使用者的完整資料 (含簽章)
+  const [currentUserProfile, setCurrentUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'agreement' | 'wo' | 'mo'>('wo');
   
@@ -51,10 +52,11 @@ export default function App() {
   const [itemModal, setItemModal] = useState<{isOpen: boolean; data: Partial<WorkOrderItem> | null}>({ isOpen: false, data: null });
   const [mergeModal, setMergeModal] = useState<{isOpen: boolean; selectedIds: string[]}>({ isOpen: false, selectedIds: [] });
   const [transferModal, setTransferModal] = useState<{isOpen: boolean; targetUser: UserProfile | null}>({ isOpen: false, targetUser: null });
-  const [showSettingsMenu, setShowSettingsMenu] = useState(false); // 設定選單開關
+  const [roleModal, setRoleModal] = useState<{isOpen: boolean; selectedRole: string}>({ isOpen: false, selectedRole: '' }); // 新增：人員分類設定視窗
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   
-  const [signingRole, setSigningRole] = useState<SigningRole | null>(null); // 協議書簽名用
-  const [isSettingSignature, setIsSettingSignature] = useState(false); // 設定個人簽章用
+  const [signingRole, setSigningRole] = useState<SigningRole | null>(null);
+  const [isSettingSignature, setIsSettingSignature] = useState(false);
   
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
@@ -67,22 +69,13 @@ export default function App() {
   useEffect(() => {
     const initAuth = async () => { setLoading(true); };
     initAuth();
-    const unsub = onAuthStateChanged(auth, 
-        (u) => { 
-            setUser(u); 
-            // 確保無論有沒有 user，只要 Auth 檢查完就關閉 loading
-            // 注意：如果您有其他 useEffect 會再次開啟 loading (如 items 監聽)，這是正常的
-            if (!currentWOId) setLoading(false); 
-            
-            if(u && !new URLSearchParams(window.location.search).get('shareId')) {
-                setActiveTab('wo');
-            }
-        },
-        (error) => {
-            console.error("Auth Error:", error);
-            setLoading(false); // 發生錯誤也要關閉 loading
+    const unsub = onAuthStateChanged(auth, u => { 
+        setUser(u); 
+        if(u && !new URLSearchParams(window.location.search).get('shareId')) {
+            setActiveTab('wo');
         }
-    );    
+        setLoading(false);
+    });
     
     const params = new URLSearchParams(window.location.search);
     const shareId = params.get('shareId');
@@ -93,10 +86,10 @@ export default function App() {
       setActiveTab('agreement');
       setDialog({isOpen:true, type:'alert', message:'您正在檢視他人分享的協議書'});
     }
+    
     return () => unsub();
   }, []);
 
-  // 監聽當前使用者的詳細資料 (取得簽章)
   useEffect(() => {
     if(!user) return;
     const unsub = onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid), (doc) => {
@@ -105,7 +98,6 @@ export default function App() {
     return () => unsub();
   }, [user]);
 
-  // 監聽所有使用者 (轉交用)
   useEffect(() => {
     if (!user) return;
     const q = query(collection(db, 'artifacts', 'mobile-mo', 'users'));
@@ -235,6 +227,14 @@ export default function App() {
   
   const handleLogout = () => { setShowSettingsMenu(false); signOut(auth); };
   
+  // 新增：儲存使用者角色
+  const handleSaveRole = async () => {
+      if(!user || !roleModal.selectedRole) return;
+      await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid), { role: roleModal.selectedRole }, { merge: true });
+      setRoleModal({isOpen:false, selectedRole:''});
+      setDialog({isOpen:true, type:'success', message: '人員分類已更新'});
+  };
+
   const handleUpdateAgreement = (field: keyof Agreement, value: any) => {
     if (field === 'woNo') value = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
     const newState = { ...draftAgreement, [field]: value };
@@ -254,17 +254,13 @@ export default function App() {
     handleUpdateAgreement('safetyChecks', newChecks);
   };
 
-  // 統一處理簽名板儲存 (包含協議書簽名 與 個人設定簽章)
   const handleSignatureSave = async (img: string) => {
     if (!user) return;
-    
     if (isSettingSignature) {
-        // 設定個人簽章
         await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid), { signatureUrl: img }, {merge: true});
         setIsSettingSignature(false);
         setDialog({isOpen:true, type:'success', message:'電子簽章已儲存'});
     } else if (signingRole) {
-        // 協議書簽名
         const uid = sharedOwnerId || user?.uid;
         if(!uid || !currentWOId) return;
         const today = new Date().toISOString().split('T')[0];
@@ -275,13 +271,10 @@ export default function App() {
     }
   };
   
-  // 快速蓋章功能
   const handleStamp = (role: SigningRole) => {
       if (!currentUserProfile?.signatureUrl) return setDialog({isOpen:true, type:'alert', message:'請先至設定建立電子簽章'});
-      
       const uid = sharedOwnerId || user?.uid;
       if(!uid || !currentWOId) return;
-      
       const today = new Date().toISOString().split('T')[0];
       const currentSigs = draftAgreement.signatures || {};
       const newSigs = { ...currentSigs, [role.id]: { img: currentUserProfile.signatureUrl, date: today } };
@@ -294,9 +287,9 @@ export default function App() {
     const currentSigs = draftAgreement.signatures || {};
     const currentSig = currentSigs[roleId];
     if (!currentSig) return;
-
     const newSigs = { ...currentSigs, [roleId]: { ...currentSig, date } };
     setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), { signatures: newSigs }, {merge:true});
+    setSigningRole(null);
   };
 
   const handleCreateWO = async () => {
@@ -312,48 +305,23 @@ export default function App() {
   const handleSaveWO = async () => {
     if(!woModal.data?.no || !woModal.data?.name) return;
     if(woModal.data.status==='MO' && (!woModal.data.subNo || woModal.data.subNo.length<2)) return setDialog({isOpen:true, type:'error', message:'MO 狀態需填寫分工令'});
-    
     const isNew = !woModal.data.id;
     const id = woModal.data.id || doc(collection(db, 'dummy')).id;
-    
-    await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { 
-      ...woModal.data, 
-      id: id,
-      updatedAt: serverTimestamp(),
-      createdAt: woModal.data.createdAt || serverTimestamp()
-    }, {merge:true});
-
+    await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { ...woModal.data, id: id, updatedAt: serverTimestamp(), createdAt: woModal.data.createdAt || serverTimestamp() }, {merge:true});
     if (isNew) {
-        await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), {
-            woNo: woModal.data.no,
-            woName: woModal.data.name,
-            contractor: '',
-            durationOption: '1',
-            safetyChecks: [],
-            signatures: {}
-        });
+        await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), { woNo: woModal.data.no, woName: woModal.data.name, contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
         setDialog({isOpen:true, type:'success', message: '工令建立成功！'});
     } else {
-        await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), {
-            woNo: woModal.data.no,
-            woName: woModal.data.name
-        }, {merge: true});
+        await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), { woNo: woModal.data.no, woName: woModal.data.name }, {merge: true});
         setDialog({isOpen:true, type:'success', message: '工令更新成功'});
     }
-
     setWoModal({isOpen:false, data:null});
   };
 
   const handleSaveItem = async () => {
     if(!itemModal.data?.no || !itemModal.data?.qty) return;
-
-    // 邏輯判斷：同一項目編號只能一筆 (排除自己)
     const duplicate = items.find(i => i.no === itemModal.data?.no && i.id !== itemModal.data?.id);
-    if (duplicate) {
-        setDialog({isOpen:true, type:'error', message: `項目編號 ${itemModal.data.no} 已存在！`});
-        return;
-    }
-
+    if (duplicate) return setDialog({isOpen:true, type:'error', message: `項目編號 ${itemModal.data.no} 已存在！`});
     const id = itemModal.data.id || doc(collection(db, 'dummy')).id;
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items', id), { ...itemModal.data, workOrderId: currentWOId, qty: Number(itemModal.data.qty), price: Number(itemModal.data.price||0) });
     setItemModal({isOpen:false, data:null});
@@ -367,13 +335,10 @@ export default function App() {
       const q = query(collection(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'items'), where('workOrderId', 'in', mergeModal.selectedIds));
       const querySnapshot = await getDocs(q);
       const sourceItems = querySnapshot.docs.map(d => d.data() as WorkOrderItem);
-
       const batch = writeBatch(db);
-
       for (const srcItem of sourceItems) {
         const existingItem = currentItems.find(i => i.no === srcItem.no);
         const srcWo = sourceWos.find(w => w.id === srcItem.workOrderId);
-        
         if (existingItem) {
           const newQty = Number(existingItem.qty) + Number(srcItem.qty);
           const remark = existingItem.remark ? `${existingItem.remark}, ${srcWo?.no}` : `合併自: ${srcWo?.no}`;
@@ -385,9 +350,7 @@ export default function App() {
           batch.set(itemRef, { ...srcItem, id: newId, workOrderId: currentWOId, remark: `合併自: ${srcWo?.no}` });
         }
       }
-
       await batch.commit();
-
       setDialog({isOpen:true, type:'success', message:`成功合併 ${sourceItems.length} 個項目`});
       setMergeModal({ isOpen: false, selectedIds: [] });
     } catch (e) {
@@ -402,29 +365,15 @@ export default function App() {
      if (!transferModal.targetUser || !currentWorkOrder || !user) return;
      const targetUser = transferModal.targetUser;
      const senderName = user.displayName || user.email;
-
      setLoading(true);
      try {
         const batch = writeBatch(db);
         const newId = doc(collection(db, 'dummy')).id;
-
         const woRef = doc(db, 'artifacts', 'mobile-mo', 'users', targetUser.uid, 'workOrders', newId);
-        batch.set(woRef, {
-            ...currentWorkOrder,
-            id: newId,
-            status: '接收工令',
-            remark: `轉交自: ${senderName}`,
-            createdAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
-        });
-
+        batch.set(woRef, { ...currentWorkOrder, id: newId, status: '接收工令', remark: `轉交自: ${senderName}`, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
         const agreeRef = doc(db, 'artifacts', 'mobile-mo', 'users', targetUser.uid, 'agreements', newId);
-        batch.set(agreeRef, {
-            ...draftAgreement
-        });
-
+        batch.set(agreeRef, { ...draftAgreement });
         await batch.commit();
-
         setDialog({isOpen:true, type:'success', message: `已成功轉交給 ${targetUser.displayName}`});
         setTransferModal({isOpen:false, targetUser: null});
      } catch(e) {
@@ -443,7 +392,7 @@ export default function App() {
     }});
   };
 
-  if (loading && items.length === 0) return <div className="min-h-screen flex items-center justify-center text-blue-600"><Loader2 className="animate-spin" size={48}/></div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-blue-600"><Loader2 className="animate-spin" size={48}/></div>;
   
   if (!user && !sharedOwnerId) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 p-6">
@@ -463,21 +412,26 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-[Microsoft JhengHei] pb-24 safe-area-bottom">
       
-      {/* Header */}
       <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b p-4 flex justify-between safe-area-top no-print">
         <div className="flex items-center gap-2 font-bold text-lg text-slate-800"><FileSpreadsheet size={18}/> 行動版 MO</div>
         <div className="flex items-center gap-2 relative">
           {sharedOwnerId && <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded">訪客</span>}
           {user && (
-              <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full" onClick={() => setShowSettingsMenu(!showSettingsMenu)}>
+              <div className="flex items-center gap-2 bg-slate-100 px-3 py-1.5 rounded-full cursor-pointer" onClick={() => setShowSettingsMenu(!showSettingsMenu)}>
                   {user.photoURL ? <img src={user.photoURL} alt="user" className="w-5 h-5 rounded-full" /> : <UserIcon size={14} />}
-                  <span className="text-xs font-bold text-slate-700">{user.displayName || user.email?.split('@')[0]}</span>
+                  <div className="flex flex-col">
+                    <span className="text-xs font-bold text-slate-700 leading-tight">{user.displayName || user.email?.split('@')[0]}</span>
+                    {/* 顯示當前角色 */}
+                    <span className="text-[10px] text-blue-600 font-bold">{currentUserProfile?.role || '未設定角色'}</span>
+                  </div>
                   {showSettingsMenu ? <X size={14}/> : <Settings size={14}/>}
               </div>
           )}
-          {/* 設定選單 (Dropdown) */}
           {user && showSettingsMenu && (
-             <div className="absolute top-12 right-0 bg-white rounded-xl shadow-xl border overflow-hidden w-40 z-50 animate-in zoom-in-95">
+             <div className="absolute top-12 right-0 bg-white rounded-xl shadow-xl border overflow-hidden w-48 z-50 animate-in zoom-in-95">
+                 <button onClick={() => { setRoleModal({isOpen:true, selectedRole: currentUserProfile?.role || ''}); setShowSettingsMenu(false); }} className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 flex items-center gap-2">
+                     <UserCog size={16}/> 設定人員分類
+                 </button>
                  <button onClick={() => { setIsSettingSignature(true); setShowSettingsMenu(false); }} className="w-full text-left px-4 py-3 text-sm hover:bg-slate-50 flex items-center gap-2">
                      <PenTool size={16}/> 設定電子簽章
                  </button>
@@ -494,6 +448,7 @@ export default function App() {
           <AgreementView 
             data={draftAgreement} currentWOId={currentWOId} isShared={!!sharedOwnerId}
             userSignature={currentUserProfile?.signatureUrl}
+            userRole={currentUserProfile?.role}
             onChange={handleUpdateAgreement} onToggleSafety={handleToggleSafety}
             onSigning={setSigningRole} onStamp={handleStamp} onClearSignature={(rid:string) => handleUpdateAgreement('signatures', {...draftAgreement.signatures, [rid]: null})}
             onDateChange={handleSignatureDateChange} 
@@ -527,7 +482,6 @@ export default function App() {
          <BottomNavigation activeTab={activeTab} setActiveTab={setActiveTab} onMoClick={() => { if(!currentWOId) return setDialog({isOpen:true, type:'alert', message:'請先選擇工令'}); setActiveTab('mo'); }} />
       </div>
 
-      {/* 簽名板 (共用：協議書簽名 OR 個人設定簽章) */}
       {(signingRole || isSettingSignature) && (
           <SignaturePad 
              title={isSettingSignature ? "設定個人電子簽章" : signingRole?.label || ''} 
@@ -541,10 +495,7 @@ export default function App() {
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
               <h3 className="font-bold text-lg mb-4">{woModal.data?.id ? '編輯工令' : '新增工令'}</h3>
               <div className="space-y-4">
-                 <div>
-                    <label className="text-xs font-bold text-gray-500 block mb-1">工令編號</label>
-                    <input type="text" maxLength={8} value={woModal.data?.no || ''} onChange={e => setWoModal({...woModal, data:{...woModal.data, no:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold font-mono" placeholder="請輸入8碼工令編號" />
-                 </div>
+                 <div><label className="text-xs font-bold text-gray-500 block mb-1">工令編號</label><input type="text" maxLength={8} value={woModal.data?.no || ''} onChange={e => setWoModal({...woModal, data:{...woModal.data, no:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '')}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold font-mono" placeholder="請輸入8碼工令編號" /></div>
                  <div><label className="text-xs font-bold text-gray-500 block mb-1">工程名稱</label><input type="text" value={woModal.data?.name || ''} onChange={e => setWoModal({...woModal, data:{...woModal.data, name:e.target.value}})} className="w-full bg-slate-50 border p-3 rounded-xl font-bold" placeholder="請輸入工程名稱" /></div>
                  <div><label className="text-xs font-bold text-gray-500 block mb-1">狀態</label><select value={woModal.data?.status || '接收工令'} onChange={e => setWoModal({...woModal, data:{...woModal.data, status:e.target.value}})} className="w-full border p-3 rounded-xl"><option>接收工令</option><option>MO</option><option>已完工</option><option>已結案</option></select></div>
                  {woModal.data?.status==='MO' && <div><label className="text-xs text-blue-500 font-bold block mb-1">分工令 (必填)</label><input type="text" maxLength={2} value={woModal.data.subNo||''} onChange={e => setWoModal({...woModal, data:{...woModal.data, subNo:e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,'')}})} className="w-full border-2 border-blue-200 p-3 rounded-xl font-mono font-bold text-center text-xl" /></div>}
@@ -554,11 +505,32 @@ export default function App() {
         </div>
       )}
 
+      {/* 新增：人員分類設定視窗 */}
+      {roleModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
+           <div className="bg-white w-full max-w-xs rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
+              <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><UserCog size={20}/> 設定人員分類</h3>
+              <p className="text-xs text-gray-500 mb-4">設定後，您將只能簽署對應的欄位。</p>
+              <div className="space-y-4">
+                 <select value={roleModal.selectedRole} onChange={e => setRoleModal({...roleModal, selectedRole: e.target.value})} className="w-full bg-slate-50 border p-3 rounded-xl appearance-none">
+                    <option value="" disabled>請選擇您的角色...</option>
+                    {USER_ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                 </select>
+                 <div className="flex gap-2 pt-2">
+                    <button onClick={() => setRoleModal({isOpen:false, selectedRole:''})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button>
+                    <button onClick={handleSaveRole} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg">儲存</button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* 轉交視窗 (已修正顯示邏輯) */}
       {transferModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
               <h3 className="font-bold text-lg mb-4 flex items-center gap-2"><Send size={20}/> 轉交協議書</h3>
-              <p className="text-xs text-gray-500 mb-4">請選擇轉交對象 (已登入過系統的使用者)：</p>
+              <p className="text-xs text-gray-500 mb-4">請選擇轉交對象 (已隱藏信箱)：</p>
               <div className="space-y-4">
                  <div className="relative">
                     <select 
@@ -570,9 +542,19 @@ export default function App() {
                         className="w-full bg-slate-50 border p-3 rounded-xl appearance-none"
                     >
                         <option value="" disabled>請選擇使用者...</option>
-                        {allUsers.map(u => (
-                            <option key={u.uid} value={u.uid}>{u.displayName} ({u.email})</option>
-                        ))}
+                        {/* 邏輯判斷：將「下一個角色」的人排在前面 */}
+                        {(() => {
+                            const myRoleIdx = USER_ROLES.indexOf(currentUserProfile?.role || '');
+                            const nextRole = myRoleIdx >= 0 && myRoleIdx < USER_ROLES.length - 1 ? USER_ROLES[myRoleIdx + 1] : null;
+                            
+                            const suggestedUsers = allUsers.filter(u => u.role === nextRole);
+                            const otherUsers = allUsers.filter(u => u.role !== nextRole);
+
+                            return [
+                                ...suggestedUsers.map(u => <option key={u.uid} value={u.uid}>★ {u.displayName} ({u.role || '未設定'}) - 建議</option>),
+                                ...otherUsers.map(u => <option key={u.uid} value={u.uid}>{u.displayName} ({u.role || '未設定'})</option>)
+                            ];
+                        })()}
                     </select>
                     <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400">▼</div>
                  </div>
@@ -592,32 +574,7 @@ export default function App() {
         </div>
       )}
 
-      {mergeModal.isOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
-           <div className="bg-white w-full max-w-sm rounded-3xl flex flex-col shadow-xl animate-in zoom-in-95 max-h-[80vh]">
-              <div className="p-4 border-b flex justify-between items-center"><h3 className="font-bold text-lg flex gap-2"><GitMerge/> 合併工令</h3><button onClick={() => setMergeModal({isOpen:false, selectedIds:[]})}><X size={20}/></button></div>
-              <div className="p-4 overflow-y-auto flex-1 space-y-2">
-                 <p className="text-xs text-gray-500 mb-2">請選擇要合併進來的工令 (可多選)：</p>
-                 {workOrders.filter(w => w.id !== currentWOId).map(wo => (
-                   <div key={wo.id} onClick={() => {
-                      const exists = mergeModal.selectedIds.includes(wo.id);
-                      setMergeModal({ ...mergeModal, selectedIds: exists ? mergeModal.selectedIds.filter((id:string) => id !== wo.id) : [...mergeModal.selectedIds, wo.id] });
-                   }} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${mergeModal.selectedIds.includes(wo.id) ? 'bg-blue-50 border-blue-300' : 'bg-white hover:bg-slate-50'}`}>
-                      <div className={`text-blue-600 ${mergeModal.selectedIds.includes(wo.id) ? 'opacity-100' : 'opacity-30'}`}>{mergeModal.selectedIds.includes(wo.id) ? <CheckSquare size={20}/> : <Square size={20}/>}</div>
-                      <div className="flex-1 min-w-0"><span className="font-bold block text-slate-800 text-sm">{wo.no}</span><span className="text-xs text-slate-500 truncate block">{wo.name}</span></div>
-                   </div>
-                 ))}
-                 {workOrders.length <= 1 && <div className="text-center text-gray-400 py-4">沒有其他工令可供合併</div>}
-              </div>
-              <div className="p-4 border-t flex gap-2">
-                 <button onClick={() => setMergeModal({isOpen:false, selectedIds:[]})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button>
-                 <button onClick={handleMergeWorkOrders} disabled={mergeModal.selectedIds.length === 0} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none">確認合併</button>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {/* Item Modal */}
+      {/* Item Modal (略) - 保持不變 */}
       {itemModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-xl animate-in slide-in-from-bottom-10">
@@ -628,23 +585,35 @@ export default function App() {
                     <input type="text" value={itemModal.data?.no || ''} onChange={e => { const v=e.target.value.toUpperCase(); setItemModal({...itemModal, data:{...itemModal.data, no:v}}); if(v) { setFilteredProducts(products.filter(p=>p.no.includes(v)||p.name.includes(v))); setShowSuggestions(true); } else setShowSuggestions(false); }} className="w-full border p-3 rounded-xl font-mono" placeholder="搜尋編號..." />
                     {showSuggestions && <ul className="absolute z-10 w-full bg-white border shadow-xl max-h-40 overflow-y-auto">{filteredProducts.map(p=><li key={p.no} onClick={() => { setItemModal({...itemModal, data:{...itemModal.data, no:p.no, name:p.name, price:p.price}}); setShowSuggestions(false); }} className="p-3 hover:bg-blue-50 border-b cursor-pointer"><span className="font-bold text-blue-600 font-mono block">{p.no}</span><span className="text-xs">{p.name}</span></li>)}</ul>}
                  </div>
-                 
-                 <div>
-                    <label className="text-xs font-bold text-gray-500 block mb-1">項目名稱</label>
-                    <input type="text" readOnly value={itemModal.data?.name || ''} className="w-full bg-slate-100 p-3 rounded-xl" />
-                 </div>
-                 
+                 <div><label className="text-xs font-bold text-gray-500 block mb-1">項目名稱</label><input type="text" readOnly value={itemModal.data?.name || ''} className="w-full bg-slate-100 p-3 rounded-xl" /></div>
                  <div className="flex gap-3">
-                    <div className="flex-1">
-                        <label className="text-xs font-bold text-gray-500 block mb-1">單價</label>
-                        <input type="number" readOnly value={itemModal.data?.price || 0} className="w-full bg-slate-100 p-3 rounded-xl text-center" />
-                    </div>
-                    <div className="flex-1">
-                        <label className="text-xs font-bold text-gray-500 block mb-1">數量</label>
-                        <input type="number" value={itemModal.data?.qty || ''} onChange={e => setItemModal({...itemModal, data:{...itemModal.data, qty: Number(e.target.value)}})} className="w-full border p-3 rounded-xl text-center font-bold text-blue-600" autoFocus />
-                    </div>
+                    <div className="flex-1"><label className="text-xs font-bold text-gray-500 block mb-1">單價</label><input type="number" readOnly value={itemModal.data?.price || 0} className="w-full bg-slate-100 p-3 rounded-xl text-center" /></div>
+                    <div className="flex-1"><label className="text-xs font-bold text-gray-500 block mb-1">數量</label><input type="number" value={itemModal.data?.qty || ''} onChange={e => setItemModal({...itemModal, data:{...itemModal.data, qty: Number(e.target.value)}})} className="w-full border p-3 rounded-xl text-center font-bold text-blue-600" autoFocus /></div>
                  </div>
                  <button onClick={handleSaveItem} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold mt-2 shadow-lg">儲存</button>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Merge Modal (略) - 保持不變 */}
+      {mergeModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+           <div className="bg-white w-full max-w-sm rounded-3xl flex flex-col shadow-xl animate-in zoom-in-95 max-h-[80vh]">
+              <div className="p-4 border-b flex justify-between items-center"><h3 className="font-bold text-lg flex gap-2"><GitMerge/> 合併工令</h3><button onClick={() => setMergeModal({isOpen:false, selectedIds:[]})}><X size={20}/></button></div>
+              <div className="p-4 overflow-y-auto flex-1 space-y-2">
+                 <p className="text-xs text-gray-500 mb-2">請選擇要合併進來的工令 (可多選)：</p>
+                 {workOrders.filter(w => w.id !== currentWOId).map(wo => (
+                   <div key={wo.id} onClick={() => { const exists = mergeModal.selectedIds.includes(wo.id); setMergeModal({ ...mergeModal, selectedIds: exists ? mergeModal.selectedIds.filter((id:string) => id !== wo.id) : [...mergeModal.selectedIds, wo.id] }); }} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${mergeModal.selectedIds.includes(wo.id) ? 'bg-blue-50 border-blue-300' : 'bg-white hover:bg-slate-50'}`}>
+                      <div className={`text-blue-600 ${mergeModal.selectedIds.includes(wo.id) ? 'opacity-100' : 'opacity-30'}`}>{mergeModal.selectedIds.includes(wo.id) ? <CheckSquare size={20}/> : <Square size={20}/>}</div>
+                      <div className="flex-1 min-w-0"><span className="font-bold block text-slate-800 text-sm">{wo.no}</span><span className="text-xs text-slate-500 truncate block">{wo.name}</span></div>
+                   </div>
+                 ))}
+                 {workOrders.length <= 1 && <div className="text-center text-gray-400 py-4">沒有其他工令可供合併</div>}
+              </div>
+              <div className="p-4 border-t flex gap-2">
+                 <button onClick={() => setMergeModal({isOpen:false, selectedIds:[]})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button>
+                 <button onClick={handleMergeWorkOrders} disabled={mergeModal.selectedIds.length === 0} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none">確認合併</button>
               </div>
            </div>
         </div>

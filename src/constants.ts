@@ -1,5 +1,14 @@
 export const CONTRACTOR_OPTIONS = ['協茂', '正紳', '勝濱', '中宏'];
 
+// 新增：人員角色選項
+export const USER_ROLES = [
+  '承辦人',
+  '股長', 
+  '帶班者', 
+  '安衛管理人員', 
+  '工地負責人'
+];
+
 export const SAFETY_CHECK_ITEMS = [
   "1. 每日施工前應先洽中鋼承辦人並向轄區單位申請安全工作許可證，獲核准後始得開始施工。",
   "2. 進入施工工地應配戴安全帽，並扣好帽帶。穿合格安全皮鞋，嚴禁穿拖鞋。衣服要塞入褲內。",
@@ -23,10 +32,11 @@ export const SAFETY_CHECK_ITEMS = [
   "20. 從事特殊工作須使用防護具 (請於下方備註填寫)",
 ];
 
+// 修改：調整簽名欄位順序 (承辦人 -> 股長 -> 帶班者 -> 安衛 -> 工地負責人)
 export const SIGNATURE_ROLES = [
-  { id: 'csc_manager', label: '中鋼公司 承辦股長' },
-  { id: 'csc_staff', label: '中鋼公司 承辦人員' },
-  { id: 'contractor_boss', label: '承包商 工地負責人' },
-  { id: 'contractor_safety', label: '承包商 安衛管理人員' },
-  { id: 'contractor_leader', label: '承包商 帶班者' },
+  { id: 'organizer', label: '承辦人' },
+  { id: 'section_chief', label: '股長' },
+  { id: 'shift_leader', label: '帶班者' },
+  { id: 'safety_officer', label: '安衛管理人員' },
+  { id: 'site_manager', label: '工地負責人' }
 ];
