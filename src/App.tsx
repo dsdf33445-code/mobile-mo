@@ -27,7 +27,8 @@ import AgreementView from './components/AgreementView';
 import WorkOrderListView from './components/WorkOrderListView';
 import MoDetailView from './components/MoDetailView';
 import BottomNavigation from './components/BottomNavigation';
-import { USER_ROLES } from './constants'; // 引入角色定義
+// 修改：引入 SAFETY_CHECK_ITEMS 以便設定預設全選
+import { USER_ROLES, SAFETY_CHECK_ITEMS } from './constants'; 
 import type { WorkOrder, WorkOrderItem, Product, Agreement, SigningRole, UserProfile } from './types';
 
 export default function App() {
@@ -52,7 +53,7 @@ export default function App() {
   const [itemModal, setItemModal] = useState<{isOpen: boolean; data: Partial<WorkOrderItem> | null}>({ isOpen: false, data: null });
   const [mergeModal, setMergeModal] = useState<{isOpen: boolean; selectedIds: string[]}>({ isOpen: false, selectedIds: [] });
   const [transferModal, setTransferModal] = useState<{isOpen: boolean; targetUser: UserProfile | null}>({ isOpen: false, targetUser: null });
-  const [roleModal, setRoleModal] = useState<{isOpen: boolean; selectedRole: string}>({ isOpen: false, selectedRole: '' }); // 新增：人員分類設定視窗
+  const [roleModal, setRoleModal] = useState<{isOpen: boolean; selectedRole: string}>({ isOpen: false, selectedRole: '' });
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   
   const [signingRole, setSigningRole] = useState<SigningRole | null>(null);
@@ -182,6 +183,9 @@ export default function App() {
     const uid = sharedOwnerId || user?.uid;
     if (!uid) return;
 
+    // 定義預設的安全確認事項索引 (全選)
+    const defaultSafetyChecks = SAFETY_CHECK_ITEMS.map((_, i) => i);
+
     let unsubAgree = () => {};
     if (currentWOId) {
        unsubAgree = onSnapshot(doc(db, 'artifacts', 'mobile-mo', 'users', uid, 'agreements', currentWOId), (s: DocumentSnapshot) => {
@@ -193,13 +197,15 @@ export default function App() {
                woName: wo?.name || '', 
                contractor: '', 
                durationOption: '1', 
-               safetyChecks: [], 
+               // 修改：預設全選
+               safetyChecks: defaultSafetyChecks, 
                signatures: {} 
            });
          }
        });
     } else {
-        if(!sharedOwnerId) setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
+        // 修改：初始化時也預設全選
+        if(!sharedOwnerId) setDraftAgreement({ woNo: '', woName: '', contractor: '', durationOption: '1', safetyChecks: defaultSafetyChecks, signatures: {} });
     }
     return () => unsubAgree();
   }, [user, currentWOId, sharedOwnerId, workOrders]);
@@ -227,7 +233,6 @@ export default function App() {
   
   const handleLogout = () => { setShowSettingsMenu(false); signOut(auth); };
   
-  // 新增：儲存使用者角色
   const handleSaveRole = async () => {
       if(!user || !roleModal.selectedRole) return;
       await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user.uid), { role: roleModal.selectedRole }, { merge: true });
@@ -309,7 +314,9 @@ export default function App() {
     const id = woModal.data.id || doc(collection(db, 'dummy')).id;
     await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'workOrders', id), { ...woModal.data, id: id, updatedAt: serverTimestamp(), createdAt: woModal.data.createdAt || serverTimestamp() }, {merge:true});
     if (isNew) {
-        await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), { woNo: woModal.data.no, woName: woModal.data.name, contractor: '', durationOption: '1', safetyChecks: [], signatures: {} });
+        // 修改：建立新工令時，預設全選
+        const defaultSafetyChecks = SAFETY_CHECK_ITEMS.map((_, i) => i);
+        await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), { woNo: woModal.data.no, woName: woModal.data.name, contractor: '', durationOption: '1', safetyChecks: defaultSafetyChecks, signatures: {} });
         setDialog({isOpen:true, type:'success', message: '工令建立成功！'});
     } else {
         await setDoc(doc(db, 'artifacts', 'mobile-mo', 'users', user!.uid, 'agreements', id), { woNo: woModal.data.no, woName: woModal.data.name }, {merge: true});
@@ -421,7 +428,6 @@ export default function App() {
                   {user.photoURL ? <img src={user.photoURL} alt="user" className="w-5 h-5 rounded-full" /> : <UserIcon size={14} />}
                   <div className="flex flex-col">
                     <span className="text-xs font-bold text-slate-700 leading-tight">{user.displayName || user.email?.split('@')[0]}</span>
-                    {/* 顯示當前角色 */}
                     <span className="text-[10px] text-blue-600 font-bold">{currentUserProfile?.role || '未設定角色'}</span>
                   </div>
                   {showSettingsMenu ? <X size={14}/> : <Settings size={14}/>}
@@ -505,7 +511,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 新增：人員分類設定視窗 */}
       {roleModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-xs rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
@@ -525,7 +530,6 @@ export default function App() {
         </div>
       )}
 
-      {/* 轉交視窗 (已修正顯示邏輯) */}
       {transferModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl animate-in zoom-in-95">
@@ -542,14 +546,11 @@ export default function App() {
                         className="w-full bg-slate-50 border p-3 rounded-xl appearance-none"
                     >
                         <option value="" disabled>請選擇使用者...</option>
-                        {/* 邏輯判斷：將「下一個角色」的人排在前面 */}
                         {(() => {
                             const myRoleIdx = USER_ROLES.indexOf(currentUserProfile?.role || '');
                             const nextRole = myRoleIdx >= 0 && myRoleIdx < USER_ROLES.length - 1 ? USER_ROLES[myRoleIdx + 1] : null;
-                            
                             const suggestedUsers = allUsers.filter(u => u.role === nextRole);
                             const otherUsers = allUsers.filter(u => u.role !== nextRole);
-
                             return [
                                 ...suggestedUsers.map(u => <option key={u.uid} value={u.uid}>★ {u.displayName} ({u.role || '未設定'}) - 建議</option>),
                                 ...otherUsers.map(u => <option key={u.uid} value={u.uid}>{u.displayName} ({u.role || '未設定'})</option>)
@@ -558,23 +559,15 @@ export default function App() {
                     </select>
                     <div className="absolute right-3 top-3.5 pointer-events-none text-gray-400">▼</div>
                  </div>
-                 
                  <div className="flex gap-2 pt-2">
                     <button onClick={() => setTransferModal({isOpen:false, targetUser: null})} className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 rounded-xl">取消</button>
-                    <button 
-                        onClick={handleTransfer} 
-                        disabled={!transferModal.targetUser}
-                        className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none"
-                    >
-                        確認轉交
-                    </button>
+                    <button onClick={handleTransfer} disabled={!transferModal.targetUser} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg disabled:opacity-50 disabled:shadow-none">確認轉交</button>
                  </div>
               </div>
            </div>
         </div>
       )}
 
-      {/* Item Modal (略) - 保持不變 */}
       {itemModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-end sm:items-center justify-center p-0 sm:p-4">
            <div className="bg-white w-full max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-xl animate-in slide-in-from-bottom-10">
@@ -582,13 +575,24 @@ export default function App() {
               <div className="space-y-4">
                  <div className="relative">
                     <label className="text-xs font-bold text-gray-500 block mb-1">項目編號</label>
-                    <input type="text" value={itemModal.data?.no || ''} onChange={e => { const v=e.target.value.toUpperCase(); setItemModal({...itemModal, data:{...itemModal.data, no:v}}); if(v) { setFilteredProducts(products.filter(p=>p.no.includes(v)||p.name.includes(v))); setShowSuggestions(true); } else setShowSuggestions(false); }} className="w-full border p-3 rounded-xl font-mono" placeholder="搜尋編號..." />
+                    {/* 修改：自動聚焦 autoFocus */}
+                    <input type="text" autoFocus value={itemModal.data?.no || ''} onChange={e => { const v=e.target.value.toUpperCase(); setItemModal({...itemModal, data:{...itemModal.data, no:v}}); if(v) { setFilteredProducts(products.filter(p=>p.no.includes(v)||p.name.includes(v))); setShowSuggestions(true); } else setShowSuggestions(false); }} className="w-full border p-3 rounded-xl font-mono" placeholder="搜尋編號..." />
                     {showSuggestions && <ul className="absolute z-10 w-full bg-white border shadow-xl max-h-40 overflow-y-auto">{filteredProducts.map(p=><li key={p.no} onClick={() => { setItemModal({...itemModal, data:{...itemModal.data, no:p.no, name:p.name, price:p.price}}); setShowSuggestions(false); }} className="p-3 hover:bg-blue-50 border-b cursor-pointer"><span className="font-bold text-blue-600 font-mono block">{p.no}</span><span className="text-xs">{p.name}</span></li>)}</ul>}
                  </div>
                  <div><label className="text-xs font-bold text-gray-500 block mb-1">項目名稱</label><input type="text" readOnly value={itemModal.data?.name || ''} className="w-full bg-slate-100 p-3 rounded-xl" /></div>
                  <div className="flex gap-3">
                     <div className="flex-1"><label className="text-xs font-bold text-gray-500 block mb-1">單價</label><input type="number" readOnly value={itemModal.data?.price || 0} className="w-full bg-slate-100 p-3 rounded-xl text-center" /></div>
-                    <div className="flex-1"><label className="text-xs font-bold text-gray-500 block mb-1">數量</label><input type="number" value={itemModal.data?.qty || ''} onChange={e => setItemModal({...itemModal, data:{...itemModal.data, qty: Number(e.target.value)}})} className="w-full border p-3 rounded-xl text-center font-bold text-blue-600" autoFocus /></div>
+                    <div className="flex-1">
+                        <label className="text-xs font-bold text-gray-500 block mb-1">數量</label>
+                        {/* 修改：數量欄位移除 autoFocus，加入防呆邏輯 */}
+                        <input type="number" value={itemModal.data?.qty || ''} 
+                            onChange={e => {
+                                const val = Number(e.target.value);
+                                setItemModal({...itemModal, data:{...itemModal.data, qty: val < 0 ? 0 : val}});
+                            }} 
+                            className="w-full border p-3 rounded-xl text-center font-bold text-blue-600" 
+                        />
+                    </div>
                  </div>
                  <button onClick={handleSaveItem} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold mt-2 shadow-lg">儲存</button>
               </div>
@@ -596,7 +600,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Merge Modal (略) - 保持不變 */}
+      {/* Merge Modal (略) */}
       {mergeModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
            <div className="bg-white w-full max-w-sm rounded-3xl flex flex-col shadow-xl animate-in zoom-in-95 max-h-[80vh]">

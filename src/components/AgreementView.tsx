@@ -8,7 +8,7 @@ interface Props {
   currentWOId: string | null;
   isShared: boolean;
   userSignature?: string; 
-  userRole?: string; // 新增：傳入當前使用者角色
+  userRole?: string;
   onChange: (field: keyof Agreement, value: any) => void;
   onToggleSafety: (idx: number) => void;
   onSigning: (role: SigningRole) => void;
@@ -25,7 +25,6 @@ export default function AgreementView({
 }: Props) {
   const [isSafetyExpanded, setIsSafetyExpanded] = useState(false);
   
-  // 處理簽名點擊：加入權限判斷
   const handleSignClick = (role: SigningRole) => {
       if (!isShared && !userRole) {
           alert('請先至右上角設定您的「人員分類」才能進行簽名。');
@@ -38,7 +37,6 @@ export default function AgreementView({
       onSigning(role);
   };
 
-  // 處理蓋章點擊：加入權限判斷
   const handleStampClick = (role: SigningRole) => {
       if (!isShared && !userRole) {
           alert('請先至右上角設定您的「人員分類」才能進行簽章。');
@@ -74,10 +72,10 @@ export default function AgreementView({
       )}
 
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden print:border-0 print:shadow-none">
-        <div className="bg-slate-50 p-4 border-b text-center text-slate-500 font-bold text-sm print:bg-white print:text-black print:text-xl print:border-b-2 print:border-black print:py-2">工程委辦及開工工安協議書</div>
+        {/* 修改：更新標題文字 */}
+        <div className="bg-slate-50 p-4 border-b text-center text-slate-500 font-bold text-sm print:bg-white print:text-black print:text-xl print:border-b-2 print:border-black print:py-2">Y642工程委辦及開工工安協議書</div>
         
         <div className="p-5 space-y-6 print:p-0 print:pt-2 print:space-y-2">
-          {/* 修改：列印時改為 grid-cols-3，讓三個欄位在同一列 */}
           <div className="grid gap-4 print:grid-cols-3 print:gap-2 print:text-xs">
             <div>
               <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block print:text-black print:text-[10px]">工令編號</label>
@@ -146,7 +144,6 @@ export default function AgreementView({
 
           <div className="print:break-inside-avoid">
             <h4 className="font-bold text-slate-800 mb-3 text-sm print:text-black print:text-xs print:mb-1">簽名確認</h4>
-            {/* 修改：列印時大幅縮小間距 */}
             <div className="grid gap-3 print:grid-cols-5 print:gap-1">
               {SIGNATURE_ROLES.map(role => (
                 <div key={role.id} onClick={() => !data.signatures?.[role.id] && handleSignClick(role)} className={`p-3 print:p-1 rounded-xl border-2 border-dashed transition-all cursor-pointer print:border print:border-black print:rounded-none ${data.signatures?.[role.id] ? 'border-blue-200 bg-blue-50/30 print:bg-transparent' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'}`}>
@@ -156,7 +153,6 @@ export default function AgreementView({
                   </div>
                   {data.signatures?.[role.id] ? (
                     <div className="flex flex-col items-center">
-                      {/* 修改：列印時高度縮到 h-12 (約 48px)，確保塞入一頁 */}
                       <img src={data.signatures[role.id]!.img} alt="簽名" className="h-32 print:h-12 object-contain mix-blend-multiply" />
                       <input type="date" value={data.signatures[role.id]!.date} onClick={e => e.stopPropagation()} onChange={e => onDateChange(role.id, e.target.value)} className="text-xs border rounded px-1 mt-1 print:mt-0 text-gray-500 print:border-0 print:text-black print:text-[8px] print:w-full print:text-center" />
                     </div>
