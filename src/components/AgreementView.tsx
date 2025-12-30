@@ -131,12 +131,12 @@ export default function AgreementView({
                 ))}
               </div>
             )}
-            {/* 修改：列印時每行一項，字體放大至 10px，增加間距 space-y-1 */}
+            {/* 修改：列印時每行一項，字體放大至 12px，增加間距 space-y-2 */}
             <div className="hidden print-only px-1 pt-0">
                  <h4 className="font-bold mb-0.5 text-[10px]">安全確認事項：</h4>
-                 <div className="flex flex-col space-y-1">
+                 <div className="flex flex-col space-y-2">
                     {SAFETY_CHECK_ITEMS.filter((_, i) => (data.safetyChecks || []).includes(i)).map(item => (
-                        <div key={item} className="text-[10px] leading-snug truncate">☑ {item}</div>
+                        <div key={item} className="text-[12px] leading-snug truncate">☑ {item}</div>
                     ))}
                  </div>
             </div>
