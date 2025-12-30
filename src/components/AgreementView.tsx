@@ -72,10 +72,8 @@ export default function AgreementView({
       )}
 
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden print:border-0 print:shadow-none">
-        {/* 標題列：列印時縮減 padding */}
         <div className="bg-slate-50 p-4 border-b text-center text-slate-500 font-bold text-sm print:bg-white print:text-black print:text-xl print:border-b-2 print:border-black print:py-1">Y642工程委辦及開工工安協議書</div>
         
-        {/* 主要內容：列印時大幅縮減間距 space-y-2 -> space-y-1 */}
         <div className="p-5 space-y-6 print:p-0 print:pt-1 print:space-y-1">
           <div className="grid gap-4 print:grid-cols-3 print:gap-2 print:text-xs">
             <div>
@@ -133,12 +131,12 @@ export default function AgreementView({
                 ))}
               </div>
             )}
-            {/* 修改：列印時每行一項，字體縮小至 8px，移除 Grid 改為垂直排列 */}
+            {/* 修改：列印時每行一項，字體放大至 10px，增加間距 space-y-1 */}
             <div className="hidden print-only px-1 pt-0">
                  <h4 className="font-bold mb-0.5 text-[10px]">安全確認事項：</h4>
-                 <div className="flex flex-col space-y-[1px]">
+                 <div className="flex flex-col space-y-1">
                     {SAFETY_CHECK_ITEMS.filter((_, i) => (data.safetyChecks || []).includes(i)).map(item => (
-                        <div key={item} className="text-[8px] leading-tight truncate">☑ {item}</div>
+                        <div key={item} className="text-[10px] leading-snug truncate">☑ {item}</div>
                     ))}
                  </div>
             </div>
