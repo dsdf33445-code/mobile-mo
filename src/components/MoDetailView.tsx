@@ -6,7 +6,7 @@ interface Props {
   currentWorkOrder?: WorkOrder;
   items: WorkOrderItem[];
   onDeleteItem: (id: string) => void;
-  onEditItem: (item: WorkOrderItem) => void; // 新增編輯功能
+  onEditItem: (item: WorkOrderItem) => void;
   onAddClick: () => void;
   onReloadDb: () => void;
   onMergeClick: () => void;
@@ -18,12 +18,16 @@ export default function MoDetailView({
   currentWorkOrder, items, onDeleteItem, onEditItem, onAddClick, onReloadDb, onMergeClick, dbLoading, productCount 
 }: Props) {
   
+  // 修改：自動排序 (依項目編號升冪)
+  const sortedItems = [...items].sort((a, b) => a.no.localeCompare(b.no, undefined, { numeric: true, sensitivity: 'base' }));
+
   const handleExport = () => {
-    if (!items || items.length === 0) return;
+    if (!sortedItems || sortedItems.length === 0) return;
     
     const headers = ['項目編號(*必填)', '項目名稱(可不填寫)', '數量(*必填)', '倍率(*必填)', '加成(*必填)', '備註(可不填寫)'];
     
-    const data = items.map((item) => [
+    // 使用 sortedItems 匯出
+    const data = sortedItems.map((item) => [
       item.no,
       item.name,
       Number(item.qty),
@@ -61,12 +65,12 @@ export default function MoDetailView({
              <p className="text-[10px] text-blue-300 uppercase tracking-wider mb-0.5">預估總金額</p>
              <p className="text-3xl font-bold text-white leading-none">
                <span className="text-lg mr-1">$</span>
-               {items.reduce((a, b) => a + (b.qty * b.price), 0).toLocaleString()}
+               {sortedItems.reduce((a, b) => a + (b.qty * b.price), 0).toLocaleString()}
              </p>
           </div>
           <div className="text-right">
              <p className="text-[10px] text-blue-300 uppercase tracking-wider mb-0.5">項目總數</p>
-             <p className="text-2xl font-bold text-white leading-none">{items.length}</p>
+             <p className="text-2xl font-bold text-white leading-none">{sortedItems.length}</p>
           </div>
         </div>
       </div>
@@ -93,7 +97,8 @@ export default function MoDetailView({
       </div>
 
       <div className="space-y-3">
-        {items.map((item) => (
+        {/* 使用 sortedItems 渲染列表 */}
+        {sortedItems.map((item) => (
           <div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm relative overflow-hidden">
             {item.remark && (
               <span className="absolute top-0 right-0 bg-purple-100 text-purple-700 text-[10px] px-2 py-1 rounded-bl-xl font-bold z-10">
@@ -117,11 +122,9 @@ export default function MoDetailView({
                </div>
                
                <div className="absolute bottom-2 right-2 flex gap-1">
-                 {/* 編輯按鈕 */}
                  <button onClick={() => onEditItem(item)} className="p-2 text-slate-300 hover:text-blue-500 hover:bg-blue-50 rounded-full transition-colors">
                    <Edit size={18}/>
                  </button>
-                 {/* 刪除按鈕 */}
                  <button onClick={() => onDeleteItem(item.id)} className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors">
                    <Trash2 size={18}/>
                  </button>
@@ -129,7 +132,7 @@ export default function MoDetailView({
             </div>
           </div>
         ))}
-        {items.length === 0 && <div className="text-center py-10 text-slate-400 text-sm">尚無項目，請點擊下方按鈕新增</div>}
+        {sortedItems.length === 0 && <div className="text-center py-10 text-slate-400 text-sm">尚無項目，請點擊下方按鈕新增</div>}
       </div>
 
       <button onClick={onMergeClick} className="fixed bottom-40 right-6 w-12 h-12 bg-purple-600 text-white rounded-full shadow-lg shadow-purple-600/40 flex items-center justify-center hover:bg-purple-700 active:scale-90 transition-all z-30" title="合併工令">

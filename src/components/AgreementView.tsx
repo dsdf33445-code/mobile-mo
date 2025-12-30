@@ -72,23 +72,24 @@ export default function AgreementView({
       )}
 
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden print:border-0 print:shadow-none">
-        {/* 修改：更新標題文字 */}
-        <div className="bg-slate-50 p-4 border-b text-center text-slate-500 font-bold text-sm print:bg-white print:text-black print:text-xl print:border-b-2 print:border-black print:py-2">Y642工程委辦及開工工安協議書</div>
+        {/* 標題列：列印時縮減 padding */}
+        <div className="bg-slate-50 p-4 border-b text-center text-slate-500 font-bold text-sm print:bg-white print:text-black print:text-xl print:border-b-2 print:border-black print:py-1">Y642工程委辦及開工工安協議書</div>
         
-        <div className="p-5 space-y-6 print:p-0 print:pt-2 print:space-y-2">
+        {/* 主要內容：列印時大幅縮減間距 space-y-2 -> space-y-1 */}
+        <div className="p-5 space-y-6 print:p-0 print:pt-1 print:space-y-1">
           <div className="grid gap-4 print:grid-cols-3 print:gap-2 print:text-xs">
             <div>
-              <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block print:text-black print:text-[10px]">工令編號</label>
-              <input type="text" value={data.woNo || ''} onChange={e => onChange('woNo', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 font-mono uppercase print:p-1 print:border print:border-black print:bg-white print:rounded-none print:text-sm" placeholder="例如: Y6N10001" maxLength={8} />
+              <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block print:text-black print:text-[10px] print:mb-0">工令編號</label>
+              <input type="text" value={data.woNo || ''} onChange={e => onChange('woNo', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 font-mono uppercase print:p-0.5 print:border print:border-black print:bg-white print:rounded-none print:text-xs" placeholder="例如: Y6N10001" maxLength={8} />
             </div>
             <div>
-              <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block print:text-black print:text-[10px]">工程名稱</label>
-              <input type="text" value={data.woName || ''} onChange={e => onChange('woName', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 print:p-1 print:border print:border-black print:bg-white print:rounded-none print:text-sm" placeholder="輸入名稱..." />
+              <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block print:text-black print:text-[10px] print:mb-0">工程名稱</label>
+              <input type="text" value={data.woName || ''} onChange={e => onChange('woName', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 focus:ring-2 focus:ring-blue-500 print:p-0.5 print:border print:border-black print:bg-white print:rounded-none print:text-xs" placeholder="輸入名稱..." />
             </div>
             <div className="print:col-span-1">
-              <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block print:text-black print:text-[10px]">承包廠商</label>
+              <label className="text-xs font-bold text-slate-400 ml-1 mb-1 block print:text-black print:text-[10px] print:mb-0">承包廠商</label>
               <div className="relative">
-                <select value={data.contractor || ''} onChange={e => onChange('contractor', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 appearance-none print:p-1 print:border print:border-black print:bg-white print:rounded-none print:text-sm">
+                <select value={data.contractor || ''} onChange={e => onChange('contractor', e.target.value)} className="w-full bg-slate-50 border-0 rounded-xl p-3 font-bold text-slate-700 appearance-none print:p-0.5 print:border print:border-black print:bg-white print:rounded-none print:text-xs">
                   <option value="" disabled>請選擇...</option>
                   {CONTRACTOR_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
                 </select>
@@ -99,7 +100,7 @@ export default function AgreementView({
           <hr className="border-slate-100 print:border-black"/>
           
           <div className="print:text-xs">
-            <h4 className="font-bold text-slate-800 mb-3 text-sm print:text-black print:text-xs print:mb-1">工程期限</h4>
+            <h4 className="font-bold text-slate-800 mb-3 text-sm print:text-black print:text-[10px] print:mb-0.5">工程期限</h4>
             <div className="space-y-3 print:space-y-0">
               {[
                 { id: '1', label: '工作天', content: <>本工程施工期限為 <input type="number" value={data.durationDays || ''} onChange={e => onChange('durationDays', e.target.value)} className="w-10 border-b-2 text-center font-bold text-blue-600 no-arrow print:text-black print:border-black print:text-xs"/> 工作天，需配合 <input type="text" value={data.durationCoop || ''} onChange={e => onChange('durationCoop', e.target.value)} className="w-16 border-b-2 text-center font-bold text-blue-600 print:text-black print:border-black print:text-xs"/> 施工。</> },
@@ -132,18 +133,19 @@ export default function AgreementView({
                 ))}
               </div>
             )}
-            <div className="hidden print-only p-2">
-                 <h4 className="font-bold mb-1 text-xs">安全確認事項：</h4>
-                 <div className="grid grid-cols-2 gap-x-4">
+            {/* 修改：列印時每行一項，字體縮小至 8px，移除 Grid 改為垂直排列 */}
+            <div className="hidden print-only px-1 pt-0">
+                 <h4 className="font-bold mb-0.5 text-[10px]">安全確認事項：</h4>
+                 <div className="flex flex-col space-y-[1px]">
                     {SAFETY_CHECK_ITEMS.filter((_, i) => (data.safetyChecks || []).includes(i)).map(item => (
-                        <div key={item} className="text-[10px] mb-0.5 leading-tight">☑ {item}</div>
+                        <div key={item} className="text-[8px] leading-tight truncate">☑ {item}</div>
                     ))}
                  </div>
             </div>
           </div>
 
           <div className="print:break-inside-avoid">
-            <h4 className="font-bold text-slate-800 mb-3 text-sm print:text-black print:text-xs print:mb-1">簽名確認</h4>
+            <h4 className="font-bold text-slate-800 mb-3 text-sm print:text-black print:text-[10px] print:mb-1">簽名確認</h4>
             <div className="grid gap-3 print:grid-cols-5 print:gap-1">
               {SIGNATURE_ROLES.map(role => (
                 <div key={role.id} onClick={() => !data.signatures?.[role.id] && handleSignClick(role)} className={`p-3 print:p-1 rounded-xl border-2 border-dashed transition-all cursor-pointer print:border print:border-black print:rounded-none ${data.signatures?.[role.id] ? 'border-blue-200 bg-blue-50/30 print:bg-transparent' : 'border-slate-200 hover:border-blue-400 hover:bg-slate-50'}`}>
